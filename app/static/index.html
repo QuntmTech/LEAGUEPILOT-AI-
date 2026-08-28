@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#173f35" />
+    <title>LEAGUEPILOT AI — Fantasy Intelligence</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <div class="auth-screen" id="auth-screen" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <div class="auth-art" aria-hidden="true">
+        <div class="field-lines"></div>
+        <div class="auth-mark">LP<span>AI</span></div>
+        <p>Your league.<br />Under intelligent control.</p>
+      </div>
+      <form class="auth-card" id="auth-form">
+        <div class="eyebrow">Founder access</div>
+        <h1 id="auth-title">Take control of your league.</h1>
+        <p>Your token stays in an encrypted, HTTP-only browser session. It is never stored in page data.</p>
+        <label for="access-token">Founder access token</label>
+        <div class="input-row">
+          <input id="access-token" name="token" type="password" autocomplete="current-password" required minlength="16" placeholder="Paste FCC_ADMIN_TOKEN" />
+          <button class="icon-button" id="toggle-token" type="button" aria-label="Show token">👁</button>
+        </div>
+        <button class="primary-button full" type="submit">
+          Open LEAGUEPILOT <span aria-hidden="true">→</span>
+        </button>
+        <p class="form-error" id="auth-error" role="alert"></p>
+        <div class="auth-footnote"><span class="status-dot"></span> Local-first and approval-controlled</div>
+      </form>
+    </div>
+
+    <div class="app-shell" id="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">LP<span>AI</span></div>
+          <div><strong>LEAGUEPILOT</strong><small>Fantasy intelligence</small></div>
+        </div>
+
+        <nav aria-label="Primary navigation">
+          <button class="nav-item active" data-view="command"><span>⌁</span> Command</button>
+          <button class="nav-item" data-view="lineup"><span>↕</span> Lineup Lab</button>
+          <button class="nav-item" data-view="waivers"><span>＋</span> Waiver Radar</button>
+          <button class="nav-item" data-view="trades"><span>⇄</span> Trade Finder</button>
+          <button class="nav-item" data-view="pulse"><span>◉</span> League Pulse</button>
+          <button class="nav-item" data-view="automation"><span>⚡</span> Automations</button>
+        </nav>
+
+        <div class="sidebar-spacer"></div>
+        <button class="nav-item" id="open-settings"><span>⚙</span> Connections</button>
+        <div class="founder-card">
+          <div class="avatar">CW</div>
+          <div><strong id="profile-name">Founder</strong><small>Founder plan</small></div>
+          <button class="more-button" id="sign-out" aria-label="Sign out">•••</button>
+        </div>
+      </aside>
+
+      <main id="main-content">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobile-menu" aria-label="Open navigation">☰</button>
+          <div>
+            <div class="eyebrow" id="league-kicker">LeaguePilot League · ESPN</div>
+            <h1 id="view-title">Command Center</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button" id="sync-button"><span>↻</span> Sync ESPN</button>
+            <button class="primary-button" id="connect-button"><span>＋</span> Connect league</button>
+          </div>
+        </header>
+
+        <section class="command-view view active" id="view-command" data-view-panel="command">
+          <div class="truth-banner" id="truth-banner">
+            <div class="truth-icon">✓</div>
+            <div><strong>Data honesty is on.</strong><span id="truth-message">Preview values are clearly labeled until ESPN is connected.</span><small class="quality-line" id="quality-line">No synchronized projection coverage yet.</small></div>
+            <div class="live-pill"><span></span><b id="connection-state">PREVIEW</b></div>
+          </div>
+
+          <section class="hero-grid">
+            <article class="matchup-card panel">
+              <div class="card-heading">
+                <div><span class="section-label">This week</span><h2 id="matchup-title">Matchup intelligence</h2></div>
+                <span class="week-chip" id="week-chip">WEEK —</span>
+              </div>
+              <div class="matchup-meter">
+                <div class="team-side">
+                  <div class="team-badge green" id="my-initials">YOU</div>
+                  <strong id="my-team-name">Your team</strong>
+                  <span id="my-projection">— projected</span>
+                </div>
+                <div class="win-orb">
+                  <span id="win-probability">—</span>
+                  <small>PROJ SHARE</small>
+                </div>
+                <div class="team-side right">
+                  <div class="team-badge sand" id="opponent-initials">OPP</div>
+                  <strong id="opponent-name">Opponent</strong>
+                  <span id="opponent-projection">— projected</span>
+                </div>
+              </div>
+              <div class="edge-strip">
+                <span>Projected margin</span><strong id="projected-margin">Connect ESPN to calculate</strong>
+              </div>
+            </article>
+
+            <article class="coach-card panel dark-panel">
+              <div class="coach-head"><div class="coach-icon">✦</div><div><span class="section-label">LeaguePilot intelligence</span><h2>Morning brief</h2></div><span class="rules-chip" id="ai-mode">RULES</span></div>
+              <p id="coach-brief">Connect your league and LEAGUEPILOT AI will explain the most important lineup, waiver, and trade moves—using only real league data.</p>
+              <div class="brief-actions">
+                <button id="run-all-analysis">Run full analysis</button>
+                <button id="create-report">Create league recap</button>
+              </div>
+              <small>AI can recommend. Only you can approve.</small>
+            </article>
+          </section>
+
+          <section class="metric-grid" aria-label="Weekly metrics">
+            <article class="metric-card"><div class="metric-icon mint">↗</div><div><span>Lineup edge</span><strong id="lineup-edge">—</strong><small id="lineup-note">Waiting for projections</small></div></article>
+            <article class="metric-card"><div class="metric-icon gold">◎</div><div><span>Waiver targets</span><strong id="waiver-count">—</strong><small id="waiver-note">No analysis yet</small></div></article>
+            <article class="metric-card"><div class="metric-icon blue">⇄</div><div><span>Trade matches</span><strong id="trade-count">—</strong><small id="trade-note">No analysis yet</small></div></article>
+            <article class="metric-card"><div class="metric-icon red">!</div><div><span>Roster risks</span><strong id="risk-count">—</strong><small id="risk-note">Injury scan unavailable</small></div></article>
+          </section>
+
+          <section class="content-grid">
+            <article class="panel decision-board">
+              <div class="card-heading">
+                <div><span class="section-label">Decision queue</span><h2>Highest-impact moves</h2></div>
+                <button class="text-button" id="refresh-recommendations">Refresh</button>
+              </div>
+              <div id="recommendation-list" class="recommendation-list">
+                <div class="empty-state compact"><span>⌁</span><strong>No league decisions yet</strong><p>Connect ESPN and run an analysis. Nothing is fabricated while data is missing.</p></div>
+              </div>
+            </article>
+
+            <article class="panel ranking-panel">
+              <div class="card-heading"><div><span class="section-label">League radar</span><h2>Power rankings</h2></div><span class="method-chip">FORM + POINTS</span></div>
+              <div class="rankings" id="power-rankings">
+                <div class="empty-state compact"><span>◉</span><strong>Rankings unlock after sync</strong><p>Record, points and projected strength are weighted transparently.</p></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="automation-strip panel">
+            <div class="automation-copy"><div class="automation-bolt">⚡</div><div><span class="section-label">Set it and check it</span><h2>Your weekly operating rhythm</h2><p>Every run reads fresh data, stores its evidence and queues decisions for approval.</p></div></div>
+            <div class="schedule-item"><b>THU</b><span>First lineup scan<small>6:00 PM</small></span></div>
+            <div class="schedule-item active"><b>SUN</b><span>Inactive emergency scan<small>11:00 AM</small></span></div>
+            <div class="schedule-item"><b>MON</b><span>Waiver radar<small>8:00 AM</small></span></div>
+            <div class="schedule-item"><b>TUE</b><span>Trade finder<small>10:00 AM</small></span></div>
+          </section>
+        </section>
+
+        <section class="view focused-view" id="view-lineup" data-view-panel="lineup">
+          <div class="focus-header"><div><span class="section-label">Starter optimization</span><h2>Lineup Lab</h2><p>Projection-first recommendations with injury-aware scoring.</p></div><button class="primary-button analysis-button" data-analysis="lineup">Analyze lineup</button></div>
+          <div class="panel focus-results" id="lineup-results"></div>
+        </section>
+
+        <section class="view focused-view" id="view-waivers" data-view-panel="waivers">
+          <div class="focus-header"><div><span class="section-label">Available-player intelligence</span><h2>Waiver Radar</h2><p>Ranks real free agents against the weakest replaceable player on your roster.</p></div><button class="primary-button analysis-button" data-analysis="waivers">Scan waivers</button></div>
+          <div class="panel focus-results" id="waivers-results"></div>
+        </section>
+
+        <section class="view focused-view" id="view-trades" data-view-panel="trades">
+          <div class="focus-header"><div><span class="section-label">Mutual roster-fit matching</span><h2>Trade Finder</h2><p>Looks for another manager's surplus that answers your actual weakness.</p></div><button class="primary-button analysis-button" data-analysis="trades">Find trades</button></div>
+          <div class="panel focus-results" id="trades-results"></div>
+        </section>
+
+        <section class="view focused-view" id="view-pulse" data-view-panel="pulse">
+          <div class="focus-header"><div><span class="section-label">Built for the group chat</span><h2>League Pulse</h2><p>Honest recaps, power rankings, close games and manager awards.</p></div><div class="focus-actions"><button class="ghost-button" id="copy-report" disabled>Copy latest</button><button class="primary-button" id="pulse-report-button">Generate recap</button></div></div>
+          <article class="panel report-preview" id="report-preview"><div class="empty-state"><span>✦</span><strong>Your first recap is waiting</strong><p>Synchronize ESPN, then generate a shareable league story.</p></div></article>
+          <article class="panel history-panel"><div class="card-heading"><div><span class="section-label">Recap archive</span><h2>Recent reports</h2></div></div><div id="report-history" class="history-list"><div class="empty-state compact"><span>◷</span><strong>No reports yet</strong><p>Generated recaps will remain available here.</p></div></div></article>
+        </section>
+
+        <section class="view focused-view" id="view-automation" data-view-panel="automation">
+          <div class="focus-header"><div><span class="section-label">Approval-based automation</span><h2>Automation Control</h2><p>Schedule intelligence without handing an AI unrestricted access to your team.</p></div><span class="safe-badge">HUMAN APPROVAL ON</span></div>
+          <div class="automation-cards">
+            <article class="panel automation-card"><span>Thursday · 6 PM</span><h3>Opening lineup scan</h3><p>Flags projection upgrades and early injury risk.</p><b>READY</b></article>
+            <article class="panel automation-card"><span>Sunday · 11 AM</span><h3>Inactive emergency</h3><p>Re-checks OUT and IR starters before kickoff.</p><b>READY</b></article>
+            <article class="panel automation-card"><span>Monday · 8 AM</span><h3>Waiver command</h3><p>Builds ordered claims, backup claims and FAAB ranges.</p><b>READY</b></article>
+            <article class="panel automation-card"><span>Tuesday · 10 AM</span><h3>Trade market</h3><p>Finds realistic trades based on both rosters.</p><b>READY</b></article>
+          </div>
+          <div class="automation-control-grid">
+            <article class="panel integration-panel">
+              <div class="card-heading"><div><span class="section-label">Delivery</span><h2>Group-chat channels</h2></div><button class="primary-button" id="add-channel-button">Add channel</button></div>
+              <p class="panel-intro">Webhook and bot credentials stay encrypted. Test delivery only runs when you click it.</p>
+              <div id="notification-channel-list" class="channel-list"><div class="empty-state compact"><span>↗</span><strong>No delivery channel</strong><p>Add Discord or GroupMe when you are ready.</p></div></div>
+            </article>
+            <article class="panel activity-panel">
+              <div class="card-heading"><div><span class="section-label">Accountability</span><h2>Recent activity</h2></div><button class="text-button" id="refresh-activity">Refresh</button></div>
+              <div id="activity-list" class="activity-list"><div class="empty-state compact"><span>✓</span><strong>Activity is loading</strong></div></div>
+            </article>
+          </div>
+          <div class="panel automation-note"><strong>Why approval stays on</strong><p>ESPN does not provide a stable, documented write API for fantasy roster changes. This version automates every safe step and records your decision, but never risks your account with silent browser clicks.</p></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="connection-dialog" class="connection-dialog">
+      <form class="dialog-shell" id="connection-form">
+        <div class="dialog-head"><div><span class="section-label">ESPN connector</span><h2>Connect your league</h2></div><button class="close-button" type="button" data-close-dialog="connection-dialog" aria-label="Close">×</button></div>
+        <div class="security-note"><span>🔒</span><p>Your private ESPN cookies are encrypted with AES-256-GCM before they enter the database and are never returned by the API.</p></div>
+        <div class="form-grid">
+          <label>League ID<input name="league_id" type="number" min="1" required placeholder="123456789" /></label>
+          <label>Your team ID<input name="team_id" type="number" min="1" required placeholder="1" /></label>
+          <label>Season<input name="season" type="number" min="2019" max="2100" value="2026" required /></label>
+          <label class="checkbox-label"><input name="is_public" type="checkbox" /> This league is public</label>
+          <label class="full-field private-field">ESPN_S2 cookie<input name="espn_s2" type="password" autocomplete="off" /></label>
+          <label class="full-field private-field">SWID cookie<input name="swid" type="password" autocomplete="off" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}" /></label>
+        </div>
+        <p class="form-error" id="connection-error" role="alert"></p>
+        <div class="dialog-actions"><button class="ghost-button" type="button" data-close-dialog="connection-dialog">Cancel</button><button class="primary-button" type="submit">Save connection</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="channel-dialog" class="connection-dialog">
+      <form class="dialog-shell" id="channel-form">
+        <div class="dialog-head"><div><span class="section-label">Encrypted delivery</span><h2>Add a group-chat channel</h2></div><button class="close-button" type="button" data-close-dialog="channel-dialog" aria-label="Close">×</button></div>
+        <div class="security-note"><span>🔒</span><p>LEAGUEPILOT AI encrypts the webhook or bot ID before storage and never returns it to the browser.</p></div>
+        <div class="form-grid">
+          <label>Channel<select name="kind" id="channel-kind"><option value="discord">Discord webhook</option><option value="groupme">GroupMe bot</option></select></label>
+          <label>Label<input name="label" required maxlength="80" placeholder="League group chat" /></label>
+          <label class="full-field"><span id="channel-target-label">Discord webhook URL</span><input name="target" type="password" autocomplete="off" required minlength="10" placeholder="https://discord.com/api/webhooks/…" /></label>
+        </div>
+        <p class="field-help" id="channel-help">Create a webhook in your Discord channel settings, then paste its URL here.</p>
+        <p class="form-error" id="channel-error" role="alert"></p>
+        <div class="dialog-actions"><button class="ghost-button" type="button" data-close-dialog="channel-dialog">Cancel</button><button class="primary-button" type="submit">Encrypt and save</button></div>
+      </form>
+    </dialog>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  </body>
+</html>

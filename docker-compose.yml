@@ -1,0 +1,16 @@
+services:
+  leaguepilot-ai:
+    build: .
+    ports:
+      - "127.0.0.1:8765:8765"
+    env_file:
+      - .env
+    environment:
+      FCC_HOST: 0.0.0.0
+      FCC_DATABASE_URL: sqlite:////data/fantasy-command-center.db
+    volumes:
+      - command-center-data:/data
+    restart: unless-stopped
+
+volumes:
+  command-center-data:

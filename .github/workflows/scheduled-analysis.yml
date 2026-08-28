@@ -1,0 +1,61 @@
+name: LEAGUEPILOT AI scheduled intelligence
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Analysis to run
+        required: true
+        default: full
+        type: choice
+        options: [lineup, waivers, trades, weekly-report, full]
+  schedule:
+    - cron: "0 22 * * 4"
+    - cron: "0 15 * * 0"
+    - cron: "0 12 * * 1"
+    - cron: "0 14 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leaguepilot-intelligence
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Select scheduled job
+        id: job
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_KIND: ${{ inputs.kind }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            kind="$MANUAL_KIND"
+          elif [[ "$SCHEDULE" == "0 22 * * 4" || "$SCHEDULE" == "0 15 * * 0" ]]; then
+            kind="lineup"
+          elif [[ "$SCHEDULE" == "0 12 * * 1" ]]; then
+            kind="waivers"
+          else
+            kind="trades"
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+      - name: Run protected job endpoint
+        env:
+          FCC_BASE_URL: ${{ secrets.FCC_BASE_URL }}
+          FCC_JOB_TOKEN: ${{ secrets.FCC_JOB_TOKEN }}
+          JOB_KIND: ${{ steps.job.outputs.kind }}
+        run: |
+          test -n "$FCC_BASE_URL"
+          test -n "$FCC_JOB_TOKEN"
+          curl --fail-with-body --retry 2 --retry-all-errors \
+            --max-time 240 \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Job-Token: $FCC_JOB_TOKEN" \
+            --data "{\"kind\":\"$JOB_KIND\",\"notify\":true}" \
+            "$FCC_BASE_URL/api/internal/jobs/run"

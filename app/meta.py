@@ -1,0 +1,3 @@
+PRODUCT_NAME = "LEAGUEPILOT AI"
+PRODUCT_SLUG = "leaguepilot-ai"
+VERSION = "0.2.1"
