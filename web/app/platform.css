@@ -143,16 +143,20 @@
 .lp-rec-list>button { min-height:96px; display:grid; grid-template-columns:37px minmax(0,1fr) auto 17px; align-items:center; gap:13px; padding:15px 20px; border-bottom:1px solid #ebe6dc; text-align:left; transition:.18s; }
 .lp-rec-list>button:last-child { border:0; }
 .lp-rec-list>button:hover { background:#f6f4ed; }
+/* Custom dashboard controls are styled from scratch, so they need their own focus ring.
+   Inset so the panel's overflow:hidden cannot clip it, and green rather than lime for
+   readable contrast against the paper surfaces. */
+.lp-rec-list>button:focus-visible,.lp-mobile-nav button:focus-visible { outline:3px solid var(--lp-green); outline-offset:-3px; }
 .lp-rec-rank { color:#9ba39f; font-size:13px; font-weight:900; }
 .lp-rec-list>button>div { min-width:0; display:grid; gap:3px; }
 .lp-rec-list small { color:var(--lp-mint); font-size:8px; font-weight:900; letter-spacing:.1em; }
 .lp-rec-list b { font-size:13px; }
 .lp-rec-list p { overflow:hidden; margin:0; color:var(--lp-muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
-.lp-rec-list .badge { background:#e3eed0; color:var(--lp-green); }
+.lp-rec-list [data-slot=badge] { background:#e3eed0; color:var(--lp-green); }
 .lp-rec-list>button>svg { width:16px; color:#9aa49f; }
 .lp-latest-report { min-height:300px; display:flex; flex-direction:column; align-items:flex-start; padding:24px; }
-.lp-latest-report>span { width:47px; height:47px; display:grid; place-items:center; margin-bottom:-26px; border-radius:12px; background:var(--lp-forest); color:var(--lp-lime); }
-.lp-latest-report .badge { align-self:flex-end; background:#e3eed0; color:var(--lp-green); }
+.lp-latest-report>span:first-child { width:47px; height:47px; display:grid; place-items:center; margin-bottom:-26px; border-radius:12px; background:var(--lp-forest); color:var(--lp-lime); }
+.lp-latest-report [data-slot=badge] { align-self:flex-end; background:#e3eed0; color:var(--lp-green); }
 .lp-latest-report h3 { margin:36px 0 10px; font-size:24px; line-height:1.08; letter-spacing:-.04em; }
 .lp-latest-report p { flex:1; margin:0 0 20px; color:var(--lp-muted); font-size:12px; line-height:1.6; }
 .lp-quality-warning { display:flex; gap:12px; padding:14px 17px; border:1px solid #dfc874; border-radius:10px; background:#fff5d3; color:#66531a; }
@@ -186,20 +190,20 @@
 .lp-recommendations-grid,.lp-reports-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
 .lp-recommendations-grid>article,.lp-reports-grid>article { min-width:0; padding:22px; border:1px solid var(--lp-line); border-radius:14px; background:var(--lp-card); }
 .lp-recommendations-grid>article>div:first-child,.lp-reports-grid>article>div:first-child { display:flex; justify-content:space-between; align-items:center; }
-.lp-recommendations-grid>article>div:first-child>span { color:#9aa49f; font-size:11px; font-weight:900; }
-.lp-recommendations-grid .badge,.lp-reports-grid .badge { background:#e5efd5; color:var(--lp-green); }
+.lp-recommendations-grid>article>div:first-child>span:first-child { color:#9aa49f; font-size:11px; font-weight:900; }
+.lp-recommendations-grid [data-slot=badge],.lp-reports-grid [data-slot=badge] { background:#e5efd5; color:var(--lp-green); }
 .lp-recommendations-grid h2,.lp-reports-grid h2 { margin:28px 0 11px; font-size:23px; line-height:1.08; }
 .lp-recommendations-grid>article>p,.lp-reports-grid>article>p { min-height:58px; color:var(--lp-muted); font-size:11px; line-height:1.6; }
 .lp-rec-meta { display:grid; grid-template-columns:repeat(3,1fr); margin:20px 0; border-block:1px solid #e5dfd4; }
 .lp-rec-meta>span { min-width:0; display:grid; gap:3px; padding:13px 6px 13px 0; }.lp-rec-meta b { overflow:hidden; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .lp-recommendations-grid button { width:100%; }
-.lp-reports-grid>article>div:first-child>span { width:42px; height:42px; display:grid; place-items:center; border-radius:10px; background:var(--lp-forest); color:var(--lp-lime); }
+.lp-reports-grid>article>div:first-child>span:first-child { width:42px; height:42px; display:grid; place-items:center; border-radius:10px; background:var(--lp-forest); color:var(--lp-lime); }
 .lp-reports-grid>article>.lp-app-kicker { margin-top:27px; }
 .lp-reports-grid h2 { margin-top:0; }
 .lp-reports-grid footer { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:22px; padding-top:15px; border-top:1px solid #e7e1d6; }
 .lp-reports-grid footer span { display:flex; gap:6px; color:var(--lp-muted); font-size:9px; }.lp-reports-grid footer svg { width:13px; }
 .lp-live-job { padding:25px; border-radius:14px; background:var(--lp-forest); color:#fff; }
-.lp-live-job>div { display:flex; align-items:center; gap:15px; }.lp-live-job>div>span { width:48px; height:48px; display:grid; place-items:center; border-radius:12px; background:var(--lp-lime); color:var(--lp-forest); }
+.lp-live-job>div { display:flex; align-items:center; gap:15px; }.lp-live-job>div>span:first-child { width:48px; height:48px; display:grid; place-items:center; border-radius:12px; background:var(--lp-lime); color:var(--lp-forest); }
 .lp-live-job-copy { flex:1; margin:0; }.lp-live-job small { color:var(--lp-lime); font-size:8px; font-weight:900; letter-spacing:.12em; }.lp-live-job h2 { margin:2px 0; font-size:21px; }.lp-live-job-copy>b { color:#aac0b8; font-size:10px; }
 .lp-live-job [data-slot=progress] { height:7px; margin-top:21px; background:rgba(255,255,255,.12); }.lp-live-job [data-slot=progress-indicator] { background:var(--lp-lime); }
 .lp-live-job footer { display:flex; justify-content:space-between; margin-top:8px; color:#78958a; font-size:8px; font-weight:800; }
@@ -264,8 +268,8 @@
   .lp-panel-head { min-height:74px; padding:16px; }
   .lp-panel-head h2 { font-size:19px; }
   .lp-panel-head button { padding-inline:6px; }
-  .lp-rec-list>button { grid-template-columns:28px minmax(0,1fr) 15px; padding:14px 15px; }
-  .lp-rec-list>button>.badge { display:none; }
+  .lp-rec-list>button { grid-template-columns:28px minmax(0,1fr) auto; padding:14px 15px; }
+  .lp-rec-list>button>svg { display:none; }
   .lp-latest-report { padding:18px; }
   .lp-first-run { padding:22px 18px; }
   .lp-first-run h2 { font-size:27px; }
