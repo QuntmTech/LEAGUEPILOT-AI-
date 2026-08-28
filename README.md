@@ -131,3 +131,15 @@ and [docs/CHATGPT_SITES_DASHBOARD_PROMPT.md](docs/CHATGPT_SITES_DASHBOARD_PROMPT
 
 The product source is proprietary to Colton Wood / QuntmTech. Third-party packages retain their
 licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Web homepage and authenticated dashboard
+
+The complete production web experience now lives in [`web/`](web/):
+
+- Public marketing homepage at `/`
+- PocketBase authentication routes
+- Protected dashboard at `/app`
+- Fictional interactive review route at `/dashboard-preview`
+- Responsive desktop, iPhone, and Android web layouts
+
+Start with [`docs/WEB_DASHBOARD_HANDOFF.md`](docs/WEB_DASHBOARD_HANDOFF.md) before editing or deploying the web application. The existing Python backend and the mobile application remain separate from `web/`.
