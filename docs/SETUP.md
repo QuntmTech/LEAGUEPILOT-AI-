@@ -31,3 +31,10 @@ replacing `.data` with the known-good copy and restarting. Test this before rely
 Keep `FCC_AI_PROVIDER=rules` for zero API cost. To use another provider, set the provider, exact model,
 API key and—only for OpenAI-compatible services—the base URL. Model names and prices are volatile;
 verify them when configuring deployment rather than hard-coding them in this durable guide.
+
+## Hosted CloudPod worker
+
+Set `FCC_CLOUDPOD_URL`, `FCC_CLOUDPOD_WORKER_KEY` and a unique `FCC_CLOUDPOD_WORKER_ID`, then run
+`leaguepilot-ai worker`. The key must match the protected CloudPod server configuration. Use a
+password manager or deployment secret store; never paste it into source or workflow YAML. Full
+routes and operational checks are in `docs/CLOUDPOD_BACKEND.md`.

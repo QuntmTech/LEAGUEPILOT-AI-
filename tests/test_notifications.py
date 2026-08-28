@@ -22,7 +22,7 @@ def test_discord_delivery_bounds_message_and_disables_redirects() -> None:
 
     request = captured["request"]
     assert isinstance(request, httpx.Request)
-    assert request.headers["user-agent"] == "LeaguePilotAI/0.2.1"
+    assert request.headers["user-agent"] == "LeaguePilotAI/0.3.0"
     assert len(request.content) < 2100
 
 

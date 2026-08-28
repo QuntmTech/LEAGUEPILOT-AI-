@@ -15,7 +15,7 @@ def test_health_and_security_headers(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["version"] == "0.2.1"
+    assert response.json()["version"] == "0.3.0"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 

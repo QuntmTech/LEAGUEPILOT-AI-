@@ -25,13 +25,18 @@
 - Disabling a notification channel replaces the encrypted target so the webhook or bot ID is no
   longer retained.
 - `.env`, databases, caches and coverage outputs are ignored by Git.
+- CloudPod user reads are owner-scoped and cross-tenant object probes return 404.
+- Worker endpoints require a separate high-entropy key; response-body errors are never echoed.
+- ESPN credentials are encrypted before storage, hidden from collection responses and delivered only
+  to the worker holding an active internal authentication key.
 
 ## Before public launch
 
 1. Replace the bootstrap-token login with verified OAuth or magic-link authentication and safe
    recovery.
 2. Add Redis-backed distributed rate limiting, abuse detection and session revocation UX.
-3. Move encryption keys to a managed secret store and document rotation with dual-read migration.
+3. Move CloudPod's compatibility `app_config` secrets to a host-managed secret store and document
+   rotation with dual-read migration.
 4. Move to PostgreSQL, run cross-tenant tests against production policies and add backups/restore tests.
 5. Add SBOM and container scanning alongside the existing dependency audit; commission an external
    security review.

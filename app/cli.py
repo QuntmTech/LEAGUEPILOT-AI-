@@ -76,6 +76,12 @@ def main() -> None:
     init_parser.add_argument("--force", action="store_true")
     subparsers.add_parser("doctor", help="Validate local configuration")
     subparsers.add_parser("serve", help="Start the API and dashboard")
+    worker_parser = subparsers.add_parser(
+        "worker", help="Run the CloudPod ESPN analysis worker"
+    )
+    worker_parser.add_argument(
+        "--once", action="store_true", help="Claim at most one job, then exit"
+    )
     args = parser.parse_args()
 
     if args.command == "init":
@@ -87,6 +93,10 @@ def main() -> None:
         return
     if args.command == "doctor":
         raise SystemExit(doctor())
+    if args.command == "worker":
+        from app.cloud_worker import CloudWorkerSettings, run_worker
+
+        raise SystemExit(run_worker(CloudWorkerSettings(), once=args.once))
     settings = Settings()
     uvicorn.run(
         "app.main:app",

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-08-28
+
+- Added a deployed PocketBase control plane with user profiles, workspaces, memberships, encrypted
+  ESPN connections, snapshots, recommendations, reports, channels, jobs, usage and audit records.
+- Enforced owner-scoped reads, default-deny sensitive writes and cross-tenant 404 behavior.
+- Added authenticated internal worker routes with atomic leases, retry/backoff, dead-letter handling
+  and expired-lease recovery.
+- Added a stateless Python CloudPod worker that preserves the normalized `LeagueSnapshot` boundary,
+  runs existing intelligence engines and never performs ESPN writes.
+- Captured the live CloudPod schema and deployment hooks in source, plus full operations guidance.
+- Expanded the regression suite to 42 tests; lint, tests, coverage and package builds pass.
+
 ## 0.2.1 — 2026-08-28
 
 - Reused the workspace's existing ESPN connection when editing league identity, preventing hidden

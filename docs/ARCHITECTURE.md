@@ -32,6 +32,10 @@ The beta uses SQLAlchemy with SQLite. The schema is already workspace-scoped. Po
 correct production choice when multiple application instances or concurrent workers are introduced.
 The migration trigger is a public paid beta, not an arbitrary row count.
 
+The hosted v0.3.0 path adds a PocketBase control plane and stateless Python workers. PocketBase owns
+authentication, tenant policy, job leases, reports and audit data; workers own ESPN reads and the
+existing deterministic intelligence engine. See `docs/CLOUDPOD_BACKEND.md`.
+
 ## AI fallback
 
 `rules` is the default and costs nothing. Optional providers implement the same narrator contract.

@@ -1,12 +1,16 @@
-# Release validation — v0.2.1
+# Release validation — v0.3.0
 
 Validated on Python 3.12.13 and Node.js 24.19 on 2026-08-28 UTC.
 
 | Gate | Result |
 |---|---|
 | Ruff format and lint | Pass |
-| Python test suite | 38 passed |
-| Application coverage | 86% total |
+| Python test suite | 42 passed |
+| Application coverage | 83% total |
+| CloudPod tenant isolation | Pass with two temporary authenticated tenants |
+| Private ESPN credential storage | Pass with synthetic credentials; ciphertext hidden from clients |
+| Durable job enqueue | Pass with zero-attempt queued sync job |
+| Worker client and completion contract | Pass with HTTPX mock transport |
 | ESPN normalization contract | Pass with HTTPX mock transport |
 | AES-GCM tamper/context tests | Pass |
 | Workspace and CSRF API tests | Pass |

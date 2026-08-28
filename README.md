@@ -7,7 +7,7 @@ delivery and a human approval ledger in one local-first application.
 > **Locked product name:** LEAGUEPILOT AI. Existing `FCC_` environment variables remain supported
 > so upgrading the earlier founder build does not invalidate configuration or secrets.
 
-## What works in v0.2.1
+## What works in v0.3.0
 
 - Connects public or private ESPN Fantasy Football leagues through an isolated read-only HTTPX
   adapter, without handing account cookies to a third-party service.
@@ -24,6 +24,9 @@ delivery and a human approval ledger in one local-first application.
 - Recovers CSRF state across browser tabs and rate-limits repeated failed founder sign-ins.
 - Falls back to deterministic narration if an optional external AI provider is unavailable.
 - Never lets model output directly execute an ESPN roster change.
+- Runs a hosted PocketBase control plane with per-user workspaces and default-deny internal writes.
+- Queues ESPN sync and analysis work through atomic leases, retries and dead-letter handling.
+- Scales stateless read-only ESPN workers horizontally without exposing credentials in result payloads.
 
 ## Fastest local setup on macOS or Linux
 
@@ -79,6 +82,18 @@ curl --fail-with-body \
 The included GitHub Actions workflow shows the four weekly runs. Add `FCC_BASE_URL` and
 `FCC_JOB_TOKEN` as repository secrets before enabling scheduled runs in a hosted repository.
 
+## Hosted CloudPod worker
+
+The live v0.3.0 control plane is `https://leaguepilot-ai.cloudpod.pro`. Configure a worker with
+`FCC_CLOUDPOD_URL`, `FCC_CLOUDPOD_WORKER_KEY` and a unique `FCC_CLOUDPOD_WORKER_ID`, then run:
+
+```bash
+leaguepilot-ai worker
+```
+
+See [docs/CLOUDPOD_BACKEND.md](docs/CLOUDPOD_BACKEND.md) for the schema, routes, deployment flow,
+security boundaries and honest scale envelope.
+
 ## Validation
 
 ```bash
@@ -91,18 +106,22 @@ python -m build
 
 See [CHANGELOG.md](CHANGELOG.md), [docs/SETUP.md](docs/SETUP.md),
 [docs/PILOT_PLAN.md](docs/PILOT_PLAN.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[docs/SECURITY.md](docs/SECURITY.md), [docs/VALIDATION.md](docs/VALIDATION.md) and
+[docs/SECURITY.md](docs/SECURITY.md), [docs/VALIDATION.md](docs/VALIDATION.md),
+[docs/CLOUDPOD_BACKEND.md](docs/CLOUDPOD_BACKEND.md) and
 [docs/COMMERCIALIZATION.md](docs/COMMERCIALIZATION.md). The complete Claude Design / ChatGPT Sites
 marketing brief is in [docs/LANDING_PAGE_BUILD_BRIEF.md](docs/LANDING_PAGE_BUILD_BRIEF.md).
+The credit-efficient app briefs are in [docs/RORK_MOBILE_MVP_PROMPT.md](docs/RORK_MOBILE_MVP_PROMPT.md)
+and [docs/CHATGPT_SITES_DASHBOARD_PROMPT.md](docs/CHATGPT_SITES_DASHBOARD_PROMPT.md).
 
 ## Honest limitations
 
-- v0.2.1 is an owner-operated beta, not an unrestricted public SaaS launch.
+- v0.3.0 is a hosted multi-tenant beta foundation, not an unrestricted public SaaS launch.
 - Authentication is founder-token-to-HTTP-only-session with single-instance throttling. Public
   launch needs verified email/OAuth, passwordless recovery, distributed rate limiting and
   transactional email.
-- SQLite is excellent for a free single-instance beta. Public multi-instance hosting should use
-  PostgreSQL after the repository layer and migrations are upgraded.
+- CloudPod/PocketBase is a single SQLite-backed control-plane node. Stateless workers scale
+  horizontally, but thousands-user claims require measured load tests and a PostgreSQL migration
+  plan if write contention or multi-region requirements exceed the node's envelope.
 - Recommendation approval is recorded but does not submit ESPN lineup, waiver or trade actions.
   Browser-driven execution is intentionally excluded until account-risk and terms are resolved.
 - Live ESPN validation requires the user's league ID and credentials and was not performed with
