@@ -1,104 +1,99 @@
-# Rork prompt — credit-efficient mobile MVP
+# Rork prompt — ultra-minimum mobile starter
 
-Build the bare-minimum mobile MVP for **LEAGUEPILOT AI**, an ESPN-first fantasy-football
-intelligence app. Keep this intentionally small because the build has a limited Rork credit budget.
-Produce a clean foundation that can be expanded after the GitHub repository is connected.
+Build only the smallest functional mobile starter for **LEAGUEPILOT AI**. I have approximately 50
+Rork credits, so do not add anything beyond this exact scope.
 
-## Technical direction
+## Stack and repository
 
-- Build an Expo React Native app in TypeScript for iOS and Android.
-- Use Expo Router and simple reusable components.
-- If the existing GitHub repository `QuntmTech/LEAGUEPILOT-AI-` is connected, place all mobile code
-  under `mobile/`. Do not replace, rewrite or delete the existing Python backend, CloudPod hooks,
-  documentation or tests.
-- Use PocketBase at `https://leaguepilot-ai.cloudpod.pro` as the single backend/source of truth.
-- Read the backend URL from `EXPO_PUBLIC_CLOUDPOD_URL`; do not hard-code any secret.
-- Never include a PocketBase superuser token, the CloudPod worker key, ESPN cookies, webhook URLs or
-  private API keys in source code, Expo public variables, logs or fixtures.
-- Add a small typed backend service layer so later screens can be added without rewriting the app.
+- Expo React Native with TypeScript and Expo Router.
+- Put the mobile project in `mobile/` inside `QuntmTech/LEAGUEPILOT-AI-`.
+- Do not change or delete the existing Python, CloudPod, PocketBase or documentation files.
+- Use PocketBase at `https://leaguepilot-ai.cloudpod.pro`.
+- Read that URL from `EXPO_PUBLIC_CLOUDPOD_URL`.
+- Never place worker keys, superuser tokens, ESPN cookies or other secrets in source code.
 
-## Build only these flows
+## Build exactly three screens
 
-1. **Authentication**
-   - One polished screen with Sign In and Create Account modes using the PocketBase `users` auth
-     collection.
-   - After first authentication, call `POST /api/leaguepilot/bootstrap` once. The endpoint is
-     idempotent and returns the user's profile and workspace.
-   - Persist the normal PocketBase user session securely using the platform-appropriate local auth
-     store. Provide Sign Out.
+### 1. Sign in
 
-2. **Home dashboard**
-   - Show LEAGUEPILOT AI branding, the current workspace name, ESPN connection status and one primary
-     action.
-   - If ESPN is not connected, show **Connect ESPN**.
-   - If connected, show **Run Full Analysis**, latest job status and up to three newest
-     recommendations.
-   - Add pull-to-refresh plus useful loading, empty and error states.
+- Email and password fields.
+- Sign In button using PocketBase `users` authentication.
+- Small Create Account option using email and password.
+- After successful authentication, call `POST /api/leaguepilot/bootstrap`.
+- Keep the user signed in and provide a basic Sign Out button.
 
-3. **Connect ESPN form**
-   - Fields: league ID, team ID, season, public/private league toggle.
-   - For a private league only, show `espn_s2` and `SWID` password-style inputs with a short privacy
-     explanation.
-   - Submit to
-     `PUT /api/leaguepilot/workspaces/{workspaceId}/connections/espn`.
-   - Never display the cookies again after submission and never save them in local state longer than
-     necessary to submit the form.
+### 2. Home
 
-4. **Recommendations**
-   - A simple list and detail view for lineup, waiver and trade recommendations.
-   - Show title, summary, confidence, estimated point impact, evidence/risk flags and status.
-   - Buttons: **Approve** and **Dismiss**, calling
-     `POST /api/leaguepilot/recommendations/{id}/review` with `approved` or `dismissed`.
-   - Make it explicit that approval records the user's decision but does not execute an ESPN move.
+Show:
 
-5. **Reports and settings**
-   - Reports: basic list of weekly reports and a readable Markdown detail screen.
-   - Settings: account email, workspace name, connection status and Sign Out. No complex account
-     management in this first build.
+- LEAGUEPILOT AI name.
+- Workspace name.
+- ESPN connection status.
+- One **Connect ESPN** button when disconnected.
+- One **Run Analysis** button when connected.
+- Latest job status.
+- A plain list of the newest recommendations.
 
-## Navigation and design
+Run analysis with:
 
-- Use four bottom tabs: **Home**, **Recommendations**, **Reports**, **Settings**.
-- Style: premium modern sports command center, dark navy/near-black background, crisp white text,
-  electric blue primary accent and restrained green/orange/red status colors.
-- Prioritize readability, large tap targets, accessible contrast and safe-area behavior.
-- Use one font family, a small spacing scale and subtle cards. Avoid expensive custom illustrations,
-  video, 3D, excessive animation and unnecessary design variants.
+`POST /api/leaguepilot/workspaces/{workspaceId}/analysis`
 
-## Real-time behavior
+Body:
 
-- Subscribe through the PocketBase SDK to the signed-in user's `espn_connections`, `job_runs`,
-  `recommendations` and `reports` records.
-- Refresh the relevant query when a subscription event arrives.
-- The backend is authoritative. The future web dashboard and this mobile app must display the same
-  state and sync both directions through PocketBase; do not build a separate mobile-only database.
-- Unsubscribe on sign-out/unmount and reconnect cleanly after the app returns from the background.
+```json
+{ "kind": "full", "notify": false }
+```
 
-## Exact actions
+Use pull-to-refresh. Do not build charts, animations or complex cards.
 
-- Full analysis:
-  `POST /api/leaguepilot/workspaces/{workspaceId}/analysis` with
-  `{ "kind": "full", "notify": false }`.
-- Read only records allowed by PocketBase's authenticated owner-scoped collection rules.
-- Treat 401 as signed-out, 404 as unavailable/not owned and 429 as a temporary rate limit.
-- Do not implement any direct ESPN write action.
+### 3. Connect ESPN
 
-## Explicitly out of scope for this credit-limited build
+Fields:
 
-Do not build payments, subscriptions, commissioner tools, chat, social feeds, push notifications,
-advanced charts, AI chat, manual roster execution, offline conflict resolution, multiple sports,
-multi-workspace switching, an admin panel, custom theming, marketing pages or elaborate onboarding.
-Do not create fake production statistics. A tiny clearly labeled local preview state is acceptable
-only for design-time rendering.
+- League ID
+- Team ID
+- Season
+- Public/private toggle
+- Private leagues only: password-style `espn_s2` and `SWID`
 
-## Definition of done
+Submit to:
 
-- App boots on iOS and Android without warnings.
-- A user can register/sign in, bootstrap a workspace, connect ESPN, queue full analysis, watch the job
-  status update, read recommendations/reports, approve or dismiss a recommendation and sign out.
-- Real-time changes made by the future web dashboard appear in the mobile app and mobile changes are
-  stored in the same PocketBase records for the web dashboard.
-- No secret is committed or printed.
-- Include a short `mobile/README.md` with install, environment and run instructions.
-- Stop after this foundation. Favor working data flows over extra screens or visual polish.
+`PUT /api/leaguepilot/workspaces/{workspaceId}/connections/espn`
+
+Clear the cookie inputs immediately after submission. Never display or save those values afterward.
+
+## Design
+
+Use a simple dark sports theme:
+
+- Near-black or navy background
+- White text
+- Electric-blue buttons
+- Basic readable cards
+- Large tap targets
+
+Do not create custom graphics, videos, elaborate animation, multiple themes or extra design options.
+
+## Do not build yet
+
+Do not build reports, recommendation detail pages, approve/dismiss actions, settings, payments,
+notifications, chat, AI chat, commissioner features, advanced realtime subscriptions, offline mode,
+multiple sports, admin tools, marketing pages or automated ESPN actions.
+
+The web and mobile apps will eventually share PocketBase in real time, but for this first build simply
+read and write the same PocketBase records and use pull-to-refresh. Leave the service layer clean so
+realtime subscriptions can be added later.
+
+## Done means
+
+- The app opens on iOS and Android.
+- A user can create an account or sign in.
+- The app bootstraps the workspace.
+- The user can connect ESPN.
+- The user can queue full analysis.
+- The Home screen can display job status and recommendations after refresh.
+- No secrets are committed or logged.
+- Add a short `mobile/README.md` with setup and run instructions.
+
+Stop immediately after these three screens work. Do not spend credits generating anything else.
 
