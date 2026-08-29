@@ -3,11 +3,12 @@
 Build only the smallest functional mobile starter for **LEAGUEPILOT AI**. I have approximately 50
 Rork credits, so do not add anything beyond this exact scope.
 
-## Stack and repository
+## Existing project and repository
 
-- Expo React Native with TypeScript and Expo Router.
-- Put the mobile project in `mobile/` inside `QuntmTech/LEAGUEPILOT-AI-`.
-- Do not change or delete the existing Python, CloudPod, PocketBase or documentation files.
+- Continue the existing native SwiftUI/Xcode project in
+  `QuntmTech/rork-build-only-the-smallest-functi`.
+- Do not start over, migrate frameworks, create another repository or regenerate working screens.
+- Spend credits only connecting the existing three-screen shell to the backend.
 - Use PocketBase at `https://leaguepilot-ai.cloudpod.pro`.
 - Read that URL from `EXPO_PUBLIC_CLOUDPOD_URL`.
 - Never place worker keys, superuser tokens, ESPN cookies or other secrets in source code.
@@ -28,7 +29,8 @@ Show:
 
 - LEAGUEPILOT AI name.
 - Workspace name.
-- ESPN connection status.
+- A tiny league picker only when the account has more than one ESPN connection.
+- Selected ESPN connection status.
 - One **Connect ESPN** button when disconnected.
 - One **Run Analysis** button when connected.
 - Latest job status.
@@ -41,7 +43,7 @@ Run analysis with:
 Body:
 
 ```json
-{ "kind": "full", "notify": false }
+{ "kind": "full", "notify": false, "connection_id": "SELECTED_CONNECTION_ID" }
 ```
 
 Use pull-to-refresh. Do not build charts, animations or complex cards.
@@ -64,12 +66,13 @@ Clear the cookie inputs immediately after submission. Never display or save thos
 
 ## Design
 
-Use a simple dark sports theme:
+Match the existing LEAGUEPILOT AI homepage:
 
-- Near-black or navy background
-- White text
-- Electric-blue buttons
-- Basic readable cards
+- Warm light-tan background `#F3EFE5`
+- Off-white cards `#FFFDF8`
+- Primary forest-green `#1D5949`
+- Secondary green `#2F7A63`, lime accent `#B8DC73`, dark ink `#17221F`
+- Basic readable cards with subtle `#D7D1C6` borders
 - Large tap targets
 
 Do not create custom graphics, videos, elaborate animation, multiple themes or extra design options.
@@ -86,7 +89,7 @@ realtime subscriptions can be added later.
 
 ## Done means
 
-- The app opens on iOS and Android.
+- The existing iOS project builds and opens without a framework rewrite.
 - A user can create an account or sign in.
 - The app bootstraps the workspace.
 - The user can connect ESPN.
@@ -96,4 +99,3 @@ realtime subscriptions can be added later.
 - Add a short `mobile/README.md` with setup and run instructions.
 
 Stop immediately after these three screens work. Do not spend credits generating anything else.
-

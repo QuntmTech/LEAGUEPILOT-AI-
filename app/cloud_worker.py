@@ -15,9 +15,20 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.services.ai import RulesNarrator, build_narrator
-from app.services.analysis import analyze_lineup, analyze_trades, analyze_waivers
+from app.services.analysis import (
+    analyze_availability_alerts,
+    analyze_lineup,
+    analyze_trades,
+    analyze_waivers,
+)
+from app.services.availability import (
+    AvailabilityGateway,
+    NflverseAvailabilityGateway,
+    enrich_snapshot,
+)
 from app.services.cloudpod import CloudPodBackend
 from app.services.espn import EspnGateway, EspnGatewayError
+from app.services.notifications import deliver
 from app.services.reports import build_weekly_report_resilient
 
 logger = logging.getLogger(__name__)
@@ -36,6 +47,9 @@ class CloudWorkerSettings(BaseSettings):
     worker_poll_seconds: float = Field(default=3.0, ge=0.25, le=60.0)
     worker_request_timeout_seconds: float = Field(default=30.0, ge=5.0, le=120.0)
     espn_timeout_seconds: float = Field(default=20.0, ge=5.0, le=60.0)
+    availability_provider: Literal["none", "nflverse"] = "none"
+    availability_timeout_seconds: float = Field(default=20.0, ge=5.0, le=60.0)
+    availability_cache_seconds: float = Field(default=900.0, ge=0.0, le=3600.0)
     ai_provider: Literal["rules", "gemini", "openai-compatible"] = "rules"
     ai_model: str = ""
     ai_api_key: SecretStr | None = None
@@ -76,6 +90,7 @@ def build_completion(
     *,
     gateway: EspnGateway,
     settings: CloudWorkerSettings,
+    availability_gateway: AvailabilityGateway | None = None,
 ) -> dict[str, Any]:
     connection = job.get("connection")
     if not isinstance(connection, dict):
@@ -100,6 +115,9 @@ def build_completion(
         )
         raise WorkerJobError(message, retryable=not permanent) from exc
 
+    if availability_gateway is not None:
+        snapshot = enrich_snapshot(snapshot, availability_gateway)
+
     kind = str(job.get("kind") or "")
     recommendations = []
     if kind in {"lineup", "full"}:
@@ -108,7 +126,17 @@ def build_completion(
         recommendations.extend(analyze_waivers(snapshot))
     if kind in {"trades", "full"}:
         recommendations.extend(analyze_trades(snapshot))
-    if kind not in {"sync", "lineup", "waivers", "trades", "weekly-report", "full"}:
+    if kind == "inactive-sweep":
+        recommendations.extend(analyze_availability_alerts(snapshot))
+    if kind not in {
+        "sync",
+        "lineup",
+        "waivers",
+        "trades",
+        "weekly-report",
+        "inactive-sweep",
+        "full",
+    }:
         raise WorkerJobError("Unsupported job kind", retryable=False)
 
     report = None
@@ -135,12 +163,18 @@ def build_completion(
             "week": snapshot.week,
             "payload": snapshot_payload,
             "content_hash": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-            "schema_version": 1,
+            "schema_version": 2,
             "fetched_at": fetched_at.isoformat(),
             "expires_at": (fetched_at + timedelta(minutes=15)).isoformat(),
         },
         "recommendations": [asdict(item) for item in recommendations],
         "report": report,
+        "notification_message": _notification_message(
+            kind=kind,
+            league_name=snapshot.league_name,
+            recommendations=recommendations,
+            report=report,
+        ),
         "league_name": snapshot.league_name,
         "connection_status": "connected",
         "result": {
@@ -156,6 +190,12 @@ def run_worker(settings: CloudWorkerSettings, *, once: bool = False) -> int:
     if worker_key is None:  # Kept as a defensive guard for non-Pydantic construction.
         raise ValueError("FCC_CLOUDPOD_WORKER_KEY is required")
     gateway = EspnGateway(timeout_seconds=settings.espn_timeout_seconds)
+    availability_gateway: AvailabilityGateway | None = None
+    if settings.availability_provider == "nflverse":
+        availability_gateway = NflverseAvailabilityGateway(
+            timeout_seconds=settings.availability_timeout_seconds,
+            cache_ttl_seconds=settings.availability_cache_seconds,
+        )
     next_heartbeat = 0.0
     with CloudPodBackend(
         base_url=settings.cloudpod_url,
@@ -175,7 +215,15 @@ def run_worker(settings: CloudWorkerSettings, *, once: bool = False) -> int:
             job_id = _required_text(job.get("id"), "job ID")
             lease_token = _required_text(job.get("lease_token"), "lease token")
             try:
-                completion = build_completion(job, gateway=gateway, settings=settings)
+                if str(job.get("kind") or "") == "notification":
+                    completion = _deliver_notification_job(job)
+                else:
+                    completion = build_completion(
+                        job,
+                        gateway=gateway,
+                        settings=settings,
+                        availability_gateway=availability_gateway,
+                    )
                 backend.complete(job_id=job_id, payload=completion)
             except WorkerJobError as exc:
                 backend.fail(
@@ -228,3 +276,53 @@ def _optional_text(value: object) -> str | None:
 def _safe_error(exc: Exception) -> str:
     message = " ".join(str(exc).replace("\x00", "").split())
     return (message or exc.__class__.__name__)[:500]
+
+
+def _deliver_notification_job(job: dict[str, Any]) -> dict[str, Any]:
+    notification = job.get("notification")
+    if not isinstance(notification, dict):
+        raise WorkerJobError("Notification job is malformed", retryable=False)
+    deliver(
+        _required_text(notification.get("kind"), "notification kind"),
+        _required_text(notification.get("target"), "notification target"),
+        _required_text(notification.get("message"), "notification message"),
+    )
+    return {
+        "lease_token": _required_text(job.get("lease_token"), "lease token"),
+        "connection_status": "unchanged",
+        "recommendations": [],
+        "report": None,
+        "result": {
+            "kind": "notification",
+            "channel_id": _required_text(notification.get("channel_id"), "channel ID"),
+            "delivered": True,
+        },
+    }
+
+
+def _notification_message(
+    *,
+    kind: str,
+    league_name: str,
+    recommendations: list[Any],
+    report: dict[str, Any] | None,
+) -> str | None:
+    if kind == "inactive-sweep":
+        if not recommendations:
+            return None
+        top = recommendations[0]
+        return (
+            f"LEAGUEPILOT AI alert — {league_name}\n\n{top.title}\n{top.summary}\n\n"
+            "Open LeaguePilot to review before lineup lock."
+        )
+    if report is not None:
+        return (
+            f"{report['title']}\n\n{report['body_markdown']}\n\n"
+            "Generated by LEAGUEPILOT AI"
+        )
+    if recommendations:
+        lines = [f"LEAGUEPILOT AI — {league_name}"]
+        lines.extend(f"• {item.title}" for item in recommendations[:3])
+        lines.append("Open LeaguePilot to review and approve decisions.")
+        return "\n\n".join(lines)
+    return None

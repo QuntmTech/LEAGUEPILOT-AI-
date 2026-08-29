@@ -25,7 +25,7 @@ def player_value(player: Player) -> float:
         base = player.projected_points * 0.72 + player.average_points * 0.28
     else:
         base = player.projected_points if player.projected_points > 0 else player.average_points
-    status = player.injury_status.upper()
+    status = _effective_game_status(player)
     if status in INACTIVE:
         return -1000.0
     if status == "DOUBTFUL":
@@ -33,6 +33,64 @@ def player_value(player: Player) -> float:
     if status == "QUESTIONABLE":
         return base * 0.9
     return base
+
+
+def analyze_availability_alerts(snapshot: LeagueSnapshot) -> list[AnalysisResult]:
+    """Create urgent, evidence-backed alerts only for independently reported OUT players."""
+
+    team = snapshot.my_team
+    bench = [
+        player
+        for player in team.roster
+        if player.current_slot == "BE" and _effective_game_status(player) not in INACTIVE
+    ]
+    results: list[AnalysisResult] = []
+    for starter in team.roster:
+        signal = starter.availability
+        if starter.current_slot in {"BE", "IR"} or signal is None:
+            continue
+        independently_out = signal.confirmed_inactive is True or signal.game_status == "OUT"
+        if not independently_out:
+            continue
+        replacements = [player for player in bench if eligible(player, starter.current_slot)]
+        replacement = max(replacements, key=player_value) if replacements else None
+        source_label = _source_label(signal.source)
+        if replacement is None:
+            title = f"{starter.name} is out; no eligible bench replacement was found"
+            summary = (
+                f"{source_label} lists {starter.name} as OUT for week {snapshot.week}. "
+                "Review waivers or another roster slot before lock."
+            )
+            impact = 0.0
+        else:
+            title = f"{starter.name} is out — swap in {replacement.name}"
+            summary = (
+                f"{source_label} lists {starter.name} as OUT for week {snapshot.week}. "
+                f"{replacement.name} is the highest-valued eligible bench replacement."
+            )
+            impact = max(0.0, player_value(replacement))
+        results.append(
+            AnalysisResult(
+                kind="availability-alert",
+                title=title,
+                summary=summary,
+                confidence=96 if signal.confirmed_inactive is True else 90,
+                impact_points=round(impact, 2),
+                payload={
+                    "out_player_id": starter.id,
+                    "out_player": starter.name,
+                    "replacement_player_id": replacement.id if replacement else None,
+                    "replacement_player": replacement.name if replacement else None,
+                    "practice_status": signal.practice_status,
+                    "game_status": signal.game_status,
+                    "confirmed_inactive": signal.confirmed_inactive,
+                    "evidence_source": signal.source,
+                    "urgent": True,
+                    "execution_capability": "approval-only",
+                },
+            )
+        )
+    return results
 
 
 def eligible(player: Player, slot: str) -> bool:
@@ -99,8 +157,8 @@ def analyze_lineup(snapshot: LeagueSnapshot) -> list[AnalysisResult]:
                 kind="lineup",
                 title=f"Start {start.name} over {sit.name}",
                 summary=(
-                    f"{start.name} carries a {impact:.1f}-point availability-adjusted edge "
-                    f"over {sit.name} in the synchronized ESPN projection data."
+                    f"{start.name} carries a {impact:.1f}-point edge over {sit.name} "
+                    f"using {_evidence_description(start, sit)}."
                 ),
                 confidence=_confidence(start, sit),
                 impact_points=round(impact, 2),
@@ -249,6 +307,12 @@ def analyze_trades(snapshot: LeagueSnapshot, limit: int = 6) -> list[AnalysisRes
                     "mutual_fit_score": mutual_fit,
                     "my_estimated_lineup_gain": round(my_gain, 2),
                     "partner_estimated_lineup_gain": round(partner_gain, 2),
+                    "copy_paste_pitch": _trade_pitch(
+                        partner=other,
+                        offer=offer,
+                        target=target,
+                        partner_gain=partner_gain,
+                    ),
                     "evidence_source": _evidence_source(offer, target),
                     "risk_flags": _risk_flags(offer, target),
                     "execution_capability": "approval-only",
@@ -368,6 +432,11 @@ def _need_alignment(
 
 
 def _evidence_source(*players: Player) -> str:
+    independent_sources = sorted(
+        {player.availability.source for player in players if player.availability is not None}
+    )
+    if independent_sources and all(player.projected_points > 0 for player in players):
+        return "espn_projection_plus_" + "_and_".join(independent_sources) + "_availability"
     if all(player.projected_points > 0 for player in players):
         return "espn_weekly_projection"
     if all(player.average_points > 0 for player in players):
@@ -383,6 +452,20 @@ def _risk_flags(*players: Player) -> list[str]:
     ]
     if any(player.projected_points <= 0 for player in players):
         flags.append("At least one weekly ESPN projection is unavailable")
+    for player in players:
+        signal = player.availability
+        if signal is None:
+            continue
+        if signal.practice_status in {"DNP", "LP"}:
+            flags.append(
+                f"{player.name}: {signal.practice_status} on the {_source_label(signal.source)} "
+                "practice report"
+            )
+        if signal.game_status and signal.game_status not in {"ACTIVE", "NORMAL", "HEALTHY"}:
+            flags.append(
+                f"{player.name}: {signal.game_status} on the {_source_label(signal.source)} "
+                "game-status report"
+            )
     return flags
 
 
@@ -390,8 +473,53 @@ def _confidence(left: Player, right: Player) -> int:
     confidence = 72
     if left.projected_points > 0 and right.projected_points > 0:
         confidence += 10
-    if left.injury_status.upper() == "ACTIVE":
+    if _effective_game_status(left) == "ACTIVE":
         confidence += 4
-    if right.injury_status.upper() in INACTIVE:
+    if _effective_game_status(right) in INACTIVE:
         confidence += 10
+    if left.availability is not None or right.availability is not None:
+        confidence += 4
+    if any(
+        player.availability is not None
+        and player.availability.practice_status in {"DNP", "LP"}
+        for player in (left, right)
+    ):
+        confidence -= 5
     return min(96, confidence)
+
+
+def _effective_game_status(player: Player) -> str:
+    signal = player.availability
+    if signal is not None:
+        if signal.confirmed_inactive is True:
+            return "OUT"
+        if signal.game_status:
+            return signal.game_status.upper()
+    return player.injury_status.upper()
+
+
+def _evidence_description(*players: Player) -> str:
+    sources = sorted(
+        {_source_label(player.availability.source) for player in players if player.availability}
+    )
+    if sources:
+        return "ESPN projections plus independent " + " and ".join(sources) + " availability"
+    return "the synchronized ESPN projections"
+
+
+def _source_label(source: str) -> str:
+    return "nflverse" if source.lower() == "nflverse" else source[:40]
+
+
+def _trade_pitch(*, partner: Team, offer: Player, target: Player, partner_gain: float) -> str:
+    addendum = (
+        f" It projects as about a {partner_gain:.1f}-point lineup improvement for you."
+        if partner_gain > 0.25
+        else " It gives you another option at a position your roster could use."
+    )
+    recipient = partner.owner or partner.name
+    return (
+        f"Hey {recipient} — would you consider sending {target.name} for {offer.name}? "
+        f"You would add help at {offer.position}, while I would fill a need at {target.position}."
+        f"{addendum} No pressure—just thought it was a fair fit for both rosters."
+    )

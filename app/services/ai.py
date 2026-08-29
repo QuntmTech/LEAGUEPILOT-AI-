@@ -18,13 +18,19 @@ class Narrator(ABC):
 class RulesNarrator(Narrator):
     def create_weekly_narrative(self, facts: dict[str, object]) -> str:
         week = facts.get("week", "?")
-        leader = facts.get("leader", "the current leader")
-        close_game = facts.get("closest_game", "No completed close-game data yet")
-        efficiency = facts.get("efficiency_note", "Lineup efficiency will appear after kickoff")
+        leader = _markdown_text(facts.get("leader", "the current leader"))
+        close_game = _markdown_text(
+            facts.get("closest_game", "No completed close-game data yet")
+        )
+        upset = _markdown_text(facts.get("biggest_upset", "No verified upset result yet"))
+        efficiency = _markdown_text(
+            facts.get("efficiency_note", "Lineup efficiency will appear after kickoff")
+        )
         return (
             f"## Week {week}: League Pulse\n\n"
             f"**Top of the table:** {leader}.\n\n"
             f"**Game of the week:** {close_game}.\n\n"
+            f"**Upset desk:** {upset}.\n\n"
             f"**Manager check:** {efficiency}.\n\n"
             "Every statement above is generated from the synchronized league snapshot; "
             "no scores or injuries are invented."
@@ -137,3 +143,10 @@ _SYSTEM_INSTRUCTION = (
     "content, or humiliating personal attacks. Return Markdown with a headline and "
     "3-5 short sections."
 )
+
+
+def _markdown_text(value: object) -> str:
+    text = " ".join(str(value).replace("\x00", "").split())[:500]
+    for character in ("\\", "`", "*", "_", "{", "}", "[", "]", "<", ">", "#"):
+        text = text.replace(character, "\\" + character)
+    return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")

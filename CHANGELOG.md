@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-08-29
+
+- Added provider-neutral availability evidence and a zero-cost nflverse practice/game-status
+  adapter with ESPN-to-GSIS ID mapping, bounded downloads, attribution and visible degradation.
+- Added urgent availability-alert analysis and scheduled Thursday/Sunday/Monday inactive sweeps.
+- Fixed multi-league analysis selection and scoped recommendation superseding to the exact ESPN
+  connection and recommendation kind.
+- Added idempotent Discord/GroupMe delivery jobs, encrypted CloudPod channel management and stale
+  alert retirement.
+- Added copy-paste trade pitches, verified upset callouts and mass-mention/report sanitization.
+- Expanded the regression suite from 42 to 51 tests before final validation.
+
 ## 0.3.0 — 2026-08-28
 
 - Added a deployed PocketBase control plane with user profiles, workspaces, memberships, encrypted

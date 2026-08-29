@@ -1,6 +1,6 @@
 # CloudPod / PocketBase backend
 
-LEAGUEPILOT AI v0.3.0 uses `https://leaguepilot-ai.cloudpod.pro` as its hosted control plane. The
+LEAGUEPILOT AI v0.4.0 uses `https://leaguepilot-ai.cloudpod.pro` as its hosted control plane. The
 FastAPI application remains useful for local founder operation; CloudPod adds multi-user auth,
 tenant-scoped storage, a durable job queue and stateless worker coordination.
 
@@ -12,6 +12,7 @@ flowchart TD
     P --> Q[Durable job queue]
     Q --> W[Stateless Python workers]
     W --> E[Read-only ESPN adapter]
+    W --> V[Independent availability adapter]
     W --> A[Deterministic analyzers]
     W --> P
 ```
@@ -52,7 +53,9 @@ The worker:
 - atomically leases one queued job for five minutes;
 - decrypts ESPN cookies only inside the claim response to that authenticated worker;
 - normalizes ESPN data into `LeagueSnapshot`;
-- creates lineup, waiver, trade and report results;
+- optionally enriches player availability through the provider-neutral nflverse beta adapter;
+- creates lineup, waiver, trade, urgent availability-alert and report results;
+- turns completed analysis into separate idempotent Discord/GroupMe delivery jobs;
 - commits results using the lease token or reports a bounded, sanitized failure;
 - never returns credentials in completion payloads or errors.
 
@@ -65,13 +68,25 @@ dead-letter jobs after the configured attempt limit.
 2. Call `POST /api/leaguepilot/bootstrap` once; it is idempotent and returns the profile/workspace.
 3. Save ESPN configuration with
    `PUT /api/leaguepilot/workspaces/{workspaceId}/connections/espn`.
-4. Queue intelligence with
-   `POST /api/leaguepilot/workspaces/{workspaceId}/analysis`.
+4. Queue intelligence with `POST /api/leaguepilot/workspaces/{workspaceId}/analysis`, sending the
+   selected `connection_id`. The ID is optional only when the workspace has exactly one league.
 5. Subscribe to or query tenant-scoped recommendations, reports and jobs.
 6. Record a human decision through
    `POST /api/leaguepilot/recommendations/{id}/review`.
 
 An approval records intent only. The response explicitly reports `espn_action_executed: false`.
+
+### Scheduled lineup-lock sweeps
+
+CloudPod queues `inactive-sweep` jobs around Thursday, Sunday and Monday lock windows. The worker
+only creates urgent recommendations when an independent source reports a current starter OUT; a
+clean sweep retires an older alert for that same connection. With `notify: true`, completion queues
+one idempotent delivery job per active encrypted Discord or GroupMe channel.
+
+The nflverse founder-beta feed supplies practice participation and weekly game status. It is not a
+contractual 90-minute inactive service. Before paid launch, configure a licensed Sportradar Game
+Roster/Weekly Injuries or SportsDataIO Injuries implementation behind `AvailabilityGateway` and
+validate its ID mapping and freshness SLA.
 
 ## Scale envelope and launch gates
 
@@ -100,4 +115,3 @@ python -m build
 
 After deploying hooks, restart the actual PocketBase system service and verify
 `GET /api/leaguepilot/health`. Writing a hook file alone does not activate it on this host.
-

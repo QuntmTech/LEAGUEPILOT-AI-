@@ -1,4 +1,4 @@
-const LP_VERSION = "0.3.0";
+const LP_VERSION = "0.4.0";
 const MAX_TEXT = 1000;
 
 function nowIso() {
@@ -162,6 +162,36 @@ function enqueueJob(app, data) {
   return job;
 }
 
+function enqueueInactiveSweeps(app, windowId) {
+  let offset = 0;
+  let queued = 0;
+  while (true) {
+    const connections = app.findRecordsByFilter(
+      "espn_connections",
+      "status = 'connected'",
+      "id",
+      250,
+      offset,
+      {},
+    );
+    connections.forEach((connection) => {
+      enqueueJob(app, {
+        owner: connection.getString("owner"),
+        workspace: connection.getString("workspace"),
+        connection: connection.id,
+        kind: "inactive-sweep",
+        priority: 100,
+        idempotencyKey: "inactive-sweep:" + connection.id + ":" + windowId,
+        payload: { notify: true, trigger: "scheduled-lock-window" },
+      });
+      queued += 1;
+    });
+    if (connections.length < 250) break;
+    offset += connections.length;
+  }
+  return queued;
+}
+
 function connectionView(record) {
   return {
     id: record.id,
@@ -202,6 +232,7 @@ module.exports = {
   audit,
   usage,
   enqueueJob,
+  enqueueInactiveSweeps,
   connectionView,
   validateLease,
 };

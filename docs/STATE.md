@@ -8,7 +8,7 @@
   ESPN adapter.
 - **Safety locks:** Human approval required; no ESPN writes; no secret values in source/logs/API;
   workspace authorization before object access.
-- **Current candidate:** v0.3.0 CloudPod/PocketBase multi-tenant backend built directly on v0.2.1.
+- **Current candidate:** v0.4.0 independent-data and retention upgrade built directly on v0.3.0.
 - **Completed:** Locked-brand integration, evidence-rich intelligence, data-quality warnings,
   session resilience, functional automation controls, report archive, activity feed, resilient AI
   narration and expanded regression coverage.
@@ -19,5 +19,5 @@
   paid AI call performed.
 - **Rollback:** Stop the service and restore the prior source archive plus its `.data` backup; no
   external state was mutated during the build.
-- **Next:** Deploy at least one worker, configure transactional email and pilot three real ESPN
-  league configurations before any public launch.
+- **Next:** Pilot nflverse enrichment on three real ESPN leagues, measure scheduled-sweep freshness,
+  provision a licensed inactive feed before paid launch, and run multi-league/load tests.
