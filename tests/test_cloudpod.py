@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -91,3 +92,22 @@ def test_worker_settings_reject_insecure_cloudpod_url() -> None:
             cloudpod_worker_key=WORKER_KEY,
         )
 
+
+def test_cloudpod_hook_requires_explicit_connection_for_multi_league_analysis() -> None:
+    source = Path("cloudpod/pb_hooks/leaguepilot.pb.js").read_text()
+
+    assert "connection_id is required when a workspace has multiple leagues" in source
+    assert '"inactive-sweep"' in source
+    assert 'kind: "notification"' in source
+
+
+def test_cloudpod_schema_allows_availability_jobs_and_alerts() -> None:
+    schema = json.loads(Path("cloudpod/schema/collections.json").read_text())
+    values_by_collection_and_field = {
+        (collection["name"], field["name"]): field.get("values", [])
+        for collection in schema["collections"]
+        for field in collection.get("fields", [])
+    }
+
+    assert "inactive-sweep" in values_by_collection_and_field[("job_runs", "kind")]
+    assert "availability-alert" in values_by_collection_and_field[("recommendations", "kind")]

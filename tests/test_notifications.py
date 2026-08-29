@@ -22,7 +22,7 @@ def test_discord_delivery_bounds_message_and_disables_redirects() -> None:
 
     request = captured["request"]
     assert isinstance(request, httpx.Request)
-    assert request.headers["user-agent"] == "LeaguePilotAI/0.3.0"
+    assert request.headers["user-agent"] == "LeaguePilotAI/0.4.0"
     assert len(request.content) < 2100
 
 
@@ -47,3 +47,20 @@ def test_delivery_error_never_exposes_notification_target() -> None:
 def test_unsupported_notification_channel_fails_closed() -> None:
     with pytest.raises(NotificationError, match="Unsupported notification channel"):
         deliver("carrier-pigeon", "irrelevant", "hello")
+
+
+def test_outbound_chat_message_neutralizes_mass_mentions() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content.decode()
+        return httpx.Response(204, request=request)
+
+    deliver(
+        "discord",
+        "https://discord.com/api/webhooks/123/private-token",
+        "@everyone check the recap",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert "@everyone" not in str(captured["body"])
