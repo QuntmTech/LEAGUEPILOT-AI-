@@ -130,3 +130,69 @@ python -m build
 
 After deploying hooks, restart the actual PocketBase system service and verify
 `GET /api/leaguepilot/health`. Writing a hook file alone does not activate it on this host.
+
+## ESPN league discovery (shared by web and iOS)
+
+`POST /api/leaguepilot/espn/discover` — authenticated as a `users` record, 8 KB body limit.
+Implemented in `cloudpod/pb_hooks/leaguepilot_espn.pb.js` with helpers in
+`leaguepilot_lib.js`. Both clients call this same endpoint so onboarding never asks a
+consumer for a numeric team ID.
+
+**Request**
+
+```json
+{
+  "league_id": 1234567,
+  "season": 2026,
+  "espn_s2": "…",   // private leagues only, omit for public
+  "swid": "{…}"     // private leagues only, omit for public
+}
+```
+
+`espn_s2` and `swid` must be supplied together or not at all.
+
+**Response 200**
+
+```json
+{
+  "league_id": 1234567,
+  "season": 2026,
+  "league_name": "Fourth & Forever",
+  "teams": [{ "team_id": 4, "name": "Gridiron Ghosts" }],
+  "matched_team_id": 4
+}
+```
+
+`matched_team_id` is non-null only when **exactly one** team lists the supplied SWID as an
+owner. A co-managed team matches more than once, which is ambiguous — the field stays null
+and the client shows a "Which team is yours?" picker rather than binding the wrong team.
+
+**Errors** — ESPN's own response body is never forwarded, because an authenticated error
+can carry account information. Clients receive fixed, actionable messages.
+
+| Status | Meaning |
+|---|---|
+| 400 | invalid `league_id` / `season`, or only one session value supplied |
+| 401 | not authenticated, **or** ESPN rejected the request — `needs_credentials: true` distinguishes "league is private, values needed" from "values were wrong" |
+| 404 | ESPN has no such league for that season |
+| 422 | league resolved but returned no teams |
+| 502 | ESPN unreachable or unexpected status |
+
+**Guarantees**
+
+- ESPN is read-only: one GET against `lm-api-reads.fantasy.espn.com`. No mutating verb.
+- Session values are in-flight only — never stored, logged or echoed.
+- Owner identifiers are used for matching inside `leaguepilot_lib.js` and never returned.
+- The endpoint writes no records.
+
+**iOS onboarding flow** — implement identically:
+
+1. Accept a pasted league URL or league ID; parse `leagueId`, and `teamId`/`seasonId` when
+   present.
+2. `POST /api/leaguepilot/espn/discover`.
+3. On `401` with `needs_credentials: true`, reveal the private-league fields and retry.
+4. If `matched_team_id` is non-null (or a team id came from the pasted URL), use it.
+   Otherwise present `teams` for the user to tap.
+5. `PUT /api/leaguepilot/workspaces/{workspaceId}/connections/espn` with the resolved
+   `team_id`. **That endpoint is unchanged and still requires `team_id`** — discovery is
+   additive and breaks no existing client.

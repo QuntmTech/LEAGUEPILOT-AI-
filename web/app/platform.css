@@ -352,6 +352,7 @@
 /* ---- Connect ESPN league form ---------------------------------------------------- */
 .lp-connect-form { display:grid; gap:16px; margin-top:22px; padding-top:20px; border-top:1px solid var(--lp-line); }
 .lp-connect-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.lp-connect-row.two { grid-template-columns:minmax(0,180px) minmax(0,1fr); align-items:end; }
 .lp-connect-row>div { min-width:0; display:grid; gap:5px; }
 .lp-connect-row small { color:var(--lp-muted); font-size:10px; }
 .lp-connect-row code { padding:1px 4px; border-radius:3px; background:#eef1ea; font-size:10px; }
@@ -368,4 +369,24 @@
 @media (max-width:767px) {
   .lp-connect-row { grid-template-columns:1fr; }
   .lp-connect-form button[type=submit] { width:100%; min-height:46px; }
+}
+
+/* Link-first onboarding + "Which team is yours?" picker */
+.lp-connect-primary { display:grid; gap:5px; }
+.lp-connect-primary small { color:var(--lp-muted); font-size:10px; }
+.lp-choose-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.lp-choose-head h3 { margin:2px 0 5px; font-size:22px; letter-spacing:-.03em; }
+.lp-choose-head p { margin:0; color:var(--lp-muted); font-size:12px; }
+.lp-team-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:9px; margin:0; padding:0; list-style:none; }
+.lp-team-picker button { width:100%; min-height:60px; display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--lp-line); border-radius:12px; background:var(--lp-card); text-align:left; transition:.16s; }
+.lp-team-picker button:hover:not(:disabled) { border-color:var(--lp-green); background:#f6f4ed; }
+.lp-team-picker button:focus-visible { outline:3px solid var(--lp-green); outline-offset:-3px; }
+.lp-team-picker button:disabled { opacity:.55; }
+.lp-team-picker button>span { flex:0 0 auto; width:34px; height:34px; display:grid; place-items:center; border-radius:9px; background:#e3eed0; color:var(--lp-green); font-size:14px; font-weight:900; }
+.lp-team-picker b { flex:1; min-width:0; overflow:hidden; font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.lp-team-picker svg { flex:0 0 auto; width:16px; color:var(--lp-green); }
+@media (max-width:767px) {
+  .lp-connect-row.two { grid-template-columns:1fr; }
+  .lp-team-picker { grid-template-columns:1fr; }
+  .lp-team-picker button { min-height:64px; }
 }

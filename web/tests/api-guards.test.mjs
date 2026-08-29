@@ -161,6 +161,56 @@ test("the connect form keeps credentials out of React state and clears them", as
   assert.match(src, /autoComplete="off"/, "browsers must not offer to save them");
 });
 
+test("web discovery is a thin proxy with no ESPN provider logic", async () => {
+  const src = await read("app/api/leaguepilot/espn/discover/route.ts");
+  assert.match(src, /sessionToken\(\)/);
+  assert.match(src, /unauthorized\(\)/);
+  assert.match(src, /backendFetch\("\/api\/leaguepilot\/espn\/discover"/,
+    "must delegate to the shared backend endpoint");
+  // Provider logic must live in the CloudPod hook, not here, so web and iOS share it.
+  assert.ok(!/lm-api-reads|fantasy\.espn\.com/.test(src), "must not call ESPN directly");
+  assert.ok(!/owners|primaryOwner|SWID=/.test(src), "must not implement owner matching");
+  assert.ok(!/console\.(log|info|warn|error)/.test(src), "must not log");
+  assert.ok(!/localStorage|sessionStorage/.test(src), "must not persist credentials");
+});
+
+test("the shared backend hook keeps ESPN read-only and leaks nothing", async () => {
+  const hook = await readFile(
+    new URL("../../cloudpod/pb_hooks/leaguepilot_espn.pb.js", import.meta.url), "utf8");
+  assert.match(hook, /\$apis\.requireAuth\("users"\)/, "must require authentication");
+  assert.match(hook, /\$apis\.bodyLimit/, "must bound the request body");
+  // Read-only: the hook itself performs no write and forwards no ESPN body.
+  assert.ok(!/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(hook), "must not mutate ESPN");
+  assert.ok(!/\$app\.save/.test(hook), "discovery must not write records");
+  assert.ok(!/result\.body|response\.body/.test(hook), "ESPN body must never be forwarded");
+  // Only the safe list is returned.
+  assert.match(hook, /teams: teams/);
+  assert.ok(!/owners|primaryOwner/.test(hook), "owner ids must stay inside the library");
+});
+
+test("the library returns only safe team fields and matches unambiguously", async () => {
+  const lib = await readFile(
+    new URL("../../cloudpod/pb_hooks/leaguepilot_lib.js", import.meta.url), "utf8");
+  const safe = lib.match(/function espnSafeTeams[\s\S]*?\n\}/);
+  assert.ok(safe, "espnSafeTeams must exist");
+  assert.match(safe[0], /team_id:/);
+  assert.match(safe[0], /name:/);
+  assert.ok(!/owners|primaryOwner|espn_s2|swid/i.test(safe[0]),
+    "the safe list must expose no owner or credential fields");
+  const match = lib.match(/function espnMatchTeam[\s\S]*?\n\}/);
+  assert.match(match[0], /count === 1/, "ambiguous ownership must not auto-select");
+  // The fetch helper must never surface ESPN's response body.
+  const fetchFn = lib.match(/function espnFetchLeague[\s\S]*?\n\}/);
+  assert.ok(!/body:/.test(fetchFn[0]), "ESPN response body must not escape the helper");
+});
+
+test("the connect form never asks for a team ID", async () => {
+  const src = await read("components/connect-espn-form.tsx");
+  assert.ok(!/Your team ID|lp-team-id/.test(src), "the team ID field must be gone");
+  assert.match(src, /Which team is yours\?/, "must offer the team picker instead");
+  assert.match(src, /parseEspnLeagueLink/, "must accept a pasted league link");
+});
+
 test("the espn_connections field allowlist can never return ciphertext", async () => {
   const src = await read("lib/leaguepilot-server.ts");
   const match = src.match(/espn_connections:\s*\{[\s\S]*?fields:\s*\n?\s*"([^"]+)"/);
