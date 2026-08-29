@@ -47,6 +47,20 @@ Use `leaguepilot-ai worker --once` for a scheduler, smoke test or one-job contai
 contain letters, digits, dots, underscores and hyphens. Never place the worker key in source,
 container images, logs or GitHub Actions YAML.
 
+### Founder-beta worker on GitHub Actions
+
+The included `.github/workflows/scheduled-analysis.yml` starts a bounded worker every five minutes
+and uses the free deterministic narrator plus the nflverse beta adapter. Because the repository is
+public, this is a cost-efficient founder-beta bridge, not the production worker tier.
+
+To activate it, copy the existing CloudPod `LEAGUEPILOT_WORKER_KEY` value into the repository's
+Actions secret named `FCC_CLOUDPOD_WORKER_KEY`. The workflow deliberately exits successfully with a
+visible notice while that secret is absent. Never paste the key into the workflow or a commit.
+
+For production traffic, replace the scheduled runner with at least two long-running container
+workers using the same environment contract. GitHub schedules can be delayed and are not a
+real-time or thousands-user execution SLA.
+
 The worker:
 
 - authenticates through `X-LeaguePilot-Worker-Key`;
@@ -102,6 +116,7 @@ target, not a guarantee. Before an unrestricted public launch:
 6. set retention/export/delete policies and complete an external security review;
 7. prepare a PostgreSQL migration path if write contention or multi-region requirements exceed the
    single-node PocketBase envelope.
+8. replace the founder-beta GitHub Actions worker with monitored, autoscaled long-running workers.
 
 ## Deployment verification
 
