@@ -136,6 +136,42 @@ test("league switching clears stale data and discards superseded responses", asy
   assert.ok(clearAt !== -1 && clearAt < loadAt, "clear must precede the new load");
 });
 
+test("the ESPN connection route never persists, logs or echoes credentials", async () => {
+  const src = await read("app/api/leaguepilot/workspaces/[workspaceId]/connections/espn/route.ts");
+  // Cookies may only be forwarded to the backend, never written anywhere else.
+  assert.ok(!/console\.(log|info|warn|error)/.test(src), "must not log anything");
+  assert.ok(!/localStorage|sessionStorage|cookies\(\)\.set/.test(src), "must not persist credentials");
+  assert.match(src, /!!espnS2 !== !!swid/, "must require both cookies together");
+  assert.match(src, /espnS2\.length > 4096 \|\| swid\.length > 200/, "must bound cookie sizes");
+  // Omitting cookies on an update must preserve stored ciphertext rather than clear it.
+  assert.match(src, /if \(espnS2 && swid\)/);
+});
+
+test("the connect form keeps credentials out of React state and clears them", async () => {
+  const src = await read("components/connect-espn-form.tsx");
+  assert.match(src, /useRef<HTMLInputElement>/, "credentials must live in refs, not state");
+  assert.ok(
+    !/useState[^\n]*espnS2|useState[^\n]*swid/i.test(src),
+    "credentials must never be React state",
+  );
+  assert.match(src, /clearCredentials\(\);/, "must clear after submit");
+  // Clearing must be in the finally block so it runs on failure too.
+  assert.match(src, /finally \{[\s\S]{0,220}clearCredentials\(\)/);
+  assert.match(src, /type="password"/, "cookie inputs must be masked");
+  assert.match(src, /autoComplete="off"/, "browsers must not offer to save them");
+});
+
+test("the espn_connections field allowlist can never return ciphertext", async () => {
+  const src = await read("lib/leaguepilot-server.ts");
+  const match = src.match(/espn_connections:\s*\{[\s\S]*?fields:\s*\n?\s*"([^"]+)"/);
+  assert.ok(match, "espn_connections must declare an explicit field list");
+  const fields = match[1].split(",").map((f) => f.trim());
+  assert.ok(!fields.includes("credentials_ciphertext"), "ciphertext must never be listed");
+  for (const required of ["id", "league_id", "season", "status"]) {
+    assert.ok(fields.includes(required), `${required} should be readable`);
+  }
+});
+
 test("the selected league is stored as a non-secret id and never sent to PocketBase", async () => {
   const src = await read("lib/leaguepilot-client.ts");
   assert.match(src, /localStorage/);

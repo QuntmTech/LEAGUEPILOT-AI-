@@ -77,9 +77,12 @@ export const READABLE_COLLECTIONS = {
     fields: "id,workspace,connection,season,week,captured_at",
   },
   espn_connections: {
-    // Credential ciphertext columns are never listed, so they cannot be returned.
+    // Matches the real schema. credentials_ciphertext is deliberately absent — it is also
+    // marked hidden in PocketBase, so the API withholds it regardless, but listing fields
+    // explicitly means a future schema change cannot silently start returning it.
     sort: "-last_synced_at",
-    fields: "id,workspace,league_id,season,label,visibility,status,last_synced_at,last_error",
+    fields:
+      "id,workspace,league_id,team_id,season,is_public,league_name,status,last_error,last_synced_at,next_sync_at,sync_failures",
   },
 } as const;
 

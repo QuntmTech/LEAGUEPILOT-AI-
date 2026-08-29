@@ -348,3 +348,24 @@
 .lp-mobile-more>svg { width:19px!important; height:19px!important; }
 .lp-skeleton-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
 .lp-skeleton-card { height:190px; border-radius:14px; }
+
+/* ---- Connect ESPN league form ---------------------------------------------------- */
+.lp-connect-form { display:grid; gap:16px; margin-top:22px; padding-top:20px; border-top:1px solid var(--lp-line); }
+.lp-connect-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.lp-connect-row>div { min-width:0; display:grid; gap:5px; }
+.lp-connect-row small { color:var(--lp-muted); font-size:10px; }
+.lp-connect-row code { padding:1px 4px; border-radius:3px; background:#eef1ea; font-size:10px; }
+.lp-connect-public { display:flex; align-items:flex-start; gap:11px; }
+.lp-connect-public label { display:grid; gap:2px; font-size:13px; font-weight:700; }
+.lp-connect-public small { color:var(--lp-muted); font-size:10px; font-weight:500; }
+.lp-connect-private { display:grid; gap:12px; padding:14px; border:1px solid #dfc874; border-radius:11px; background:#fff9e6; }
+.lp-connect-note { display:flex; gap:9px; margin:0; color:#66531a; font-size:11px; line-height:1.55; }
+.lp-connect-note svg { flex:0 0 auto; width:15px; }
+.lp-connect-help { display:inline-flex; align-items:center; gap:5px; color:var(--lp-green); font-size:11px; font-weight:700; }
+.lp-connect-help svg { width:12px; }
+.lp-connect-error { margin:0; color:#b75042; font-size:12px; font-weight:600; }
+.lp-connect-footnote { margin:0; color:var(--lp-muted); font-size:10px; }
+@media (max-width:767px) {
+  .lp-connect-row { grid-template-columns:1fr; }
+  .lp-connect-form button[type=submit] { width:100%; min-height:46px; }
+}
