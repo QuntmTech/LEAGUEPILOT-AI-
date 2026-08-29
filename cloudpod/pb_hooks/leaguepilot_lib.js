@@ -215,6 +215,97 @@ function validateLease(job, token) {
   }
 }
 
+
+/**
+ * ESPN league read helpers.
+ *
+ * ESPN access is read-only: a single GET against the public read host. Nothing here
+ * writes to ESPN, and no raw provider object is ever returned to a client — callers
+ * receive only the normalized safe list built by espnSafeTeams().
+ */
+const ESPN_READ_BASE = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl";
+
+/** SWID is copied with or without braces depending on its source. */
+function normalizeSwid(value) {
+  return String(value || "").trim().replace(/^\{/, "").replace(/\}$/, "").toUpperCase();
+}
+
+/** ESPN has used both a single `name` and split location/nickname across seasons. */
+function espnTeamName(team) {
+  const combined = [team.location, team.nickname].filter(Boolean).join(" ").trim();
+  const name = String(team.name || combined || "").trim();
+  return name || ("Team " + String(team.id));
+}
+
+/**
+ * Fetch a league's teams read-only.
+ *
+ * Returns { status, teams } where teams is the raw provider array. Callers must pass it
+ * through espnSafeTeams() before it reaches a response — owner identifiers stay here.
+ * ESPN's response body is never surfaced: only the status code escapes this function.
+ */
+function espnFetchLeague(leagueId, season, espnS2, swid) {
+  const url = ESPN_READ_BASE + "/seasons/" + season + "/segments/0/leagues/" + leagueId +
+    "?view=mTeam&view=mSettings";
+  const headers = { "Accept": "application/json" };
+  if (espnS2 && swid) {
+    headers["Cookie"] = "espn_s2=" + espnS2 + "; SWID=" + swid;
+  }
+  let response;
+  try {
+    response = $http.send({ url: url, method: "GET", headers: headers, timeout: 15 });
+  } catch (err) {
+    return { status: 0, teams: [], leagueName: "" };
+  }
+  const status = response.statusCode;
+  if (status !== 200) return { status: status, teams: [], leagueName: "" };
+  const data = response.json || {};
+  const teams = Array.isArray(data.teams) ? data.teams : [];
+  const settings = data.settings && typeof data.settings === "object" ? data.settings : {};
+  return { status: 200, teams: teams, leagueName: cleanText(settings.name, 160) };
+}
+
+/** Strip every provider field except the id and display name. */
+function espnSafeTeams(rawTeams) {
+  const safe = [];
+  for (let i = 0; i < rawTeams.length; i++) {
+    const team = rawTeams[i];
+    const id = parseInt(team.id, 10);
+    if (!isFinite(id) || id < 1) continue;
+    safe.push({ team_id: id, name: cleanText(espnTeamName(team), 120) });
+  }
+  return safe;
+}
+
+/**
+ * Identify the caller's team from their ESPN identity.
+ *
+ * Returns a team id only when exactly one team lists the SWID as an owner. A co-managed
+ * team matching twice is ambiguous, and guessing would silently bind the wrong team, so
+ * ambiguity falls through to the picker. Owner ids never leave this function.
+ */
+function espnMatchTeam(rawTeams, swid) {
+  const target = normalizeSwid(swid);
+  if (!target) return null;
+  let found = null;
+  let count = 0;
+  for (let i = 0; i < rawTeams.length; i++) {
+    const team = rawTeams[i];
+    const owners = Array.isArray(team.owners) ? team.owners.slice() : [];
+    if (team.primaryOwner) owners.push(team.primaryOwner);
+    let owned = false;
+    for (let j = 0; j < owners.length; j++) {
+      if (normalizeSwid(owners[j]) === target) { owned = true; break; }
+    }
+    if (owned) {
+      count += 1;
+      const id = parseInt(team.id, 10);
+      if (isFinite(id)) found = id;
+    }
+  }
+  return count === 1 ? found : null;
+}
+
 module.exports = {
   LP_VERSION,
   nowIso,
@@ -235,4 +326,7 @@ module.exports = {
   enqueueInactiveSweeps,
   connectionView,
   validateLease,
+  espnFetchLeague,
+  espnSafeTeams,
+  espnMatchTeam,
 };
