@@ -14,3 +14,11 @@ htmlcov/
 dist*/
 build/
 *.egg-info/
+
+# Local deployment runtime artifacts (leaguepilot.quntm.xyz standalone Node server).
+# Not part of the app source — see start-leaguepilot.sh / DEPLOY-RUNBOOK.
+leaguepilot.pid
+start-leaguepilot.sh
+RESTART
+web/app.mjs
+web/tsconfig.tsbuildinfo
