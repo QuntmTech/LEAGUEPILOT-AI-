@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Activity, AlertTriangle, ArrowRight, Bell, BookOpen, Bot, CalendarDays, Check,
-  ChevronDown, CircleAlert, Clock3, FileText, Gauge, LayoutDashboard, ListChecks,
-  Loader2, LogOut, Menu, Play, Radar, RefreshCw, SearchCheck, Settings,
+  ChevronDown, CircleAlert, Clock3, FileText, Gauge, ListChecks,
+  Loader2, LogOut, Menu, Play, Radar, RefreshCw, SearchCheck,
   ShieldCheck, Sparkles, Trophy, UserRound, Users, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";

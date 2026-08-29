@@ -161,6 +161,43 @@ test("the connect form keeps credentials out of React state and clears them", as
   assert.match(src, /autoComplete="off"/, "browsers must not offer to save them");
 });
 
+test("discovery keeps ESPN read-only and never leaks credentials or ESPN error bodies", async () => {
+  const src = await read("app/api/leaguepilot/espn/discover/route.ts");
+  assert.match(src, /sessionToken\(\)/);
+  assert.match(src, /unauthorized\(\)/);
+  // Read-only: one GET, no mutating verb anywhere.
+  assert.ok(!/method:\s*"(POST|PUT|PATCH|DELETE)"/.test(src.replace(/export async function POST/, "")),
+    "discovery must not issue a mutating request to ESPN");
+  assert.ok(!/console\.(log|info|warn|error)/.test(src), "must not log");
+  assert.ok(!/localStorage|sessionStorage|cookies\(\)\.set/.test(src), "must not persist credentials");
+  // ESPN's own error body may contain account details and must never be forwarded.
+  assert.ok(!/espnBody|await response\.text\(\)/.test(src), "ESPN error bodies must not be forwarded");
+  assert.match(src, /AbortSignal\.timeout/, "outbound call must be bounded");
+});
+
+test("the discovery response exposes only the safe team list", async () => {
+  const src = await read("app/api/leaguepilot/espn/discover/route.ts");
+  const shape = src.match(/\.map\(\(t\) => \(\{([^}]+)\}\)\)/);
+  assert.ok(shape, "teams must be mapped to an explicit shape");
+  const fields = shape[1];
+  assert.match(fields, /team_id/);
+  assert.match(fields, /name/);
+  // Owner identifiers are used for matching but must never be returned.
+  assert.ok(!/owners|primaryOwner|swid/i.test(fields), "no ESPN account identifiers may be returned");
+});
+
+test("auto-selection only fires on an unambiguous single owner match", async () => {
+  const src = await read("app/api/leaguepilot/espn/discover/route.ts");
+  assert.match(src, /owned\.length === 1/, "two matches is ambiguous and must fall through to the picker");
+});
+
+test("the connect form never asks for a team ID", async () => {
+  const src = await read("components/connect-espn-form.tsx");
+  assert.ok(!/Your team ID|lp-team-id/.test(src), "the team ID field must be gone");
+  assert.match(src, /Which team is yours\?/, "must offer the team picker instead");
+  assert.match(src, /parseEspnLeagueLink/, "must accept a pasted league link");
+});
+
 test("the espn_connections field allowlist can never return ciphertext", async () => {
   const src = await read("lib/leaguepilot-server.ts");
   const match = src.match(/espn_connections:\s*\{[\s\S]*?fields:\s*\n?\s*"([^"]+)"/);
