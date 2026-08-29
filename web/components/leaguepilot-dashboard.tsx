@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Toaster } from "@/components/ui/sonner";
 import { LeagueContextBar } from "@/components/league-context-bar";
+import { ConnectEspnForm } from "@/components/connect-espn-form";
 import { NAV_SECTIONS, type SectionId } from "@/lib/leaguepilot-nav";
 import { useLeagueScope } from "@/lib/use-league-scope";
 
@@ -280,7 +281,9 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
 
         {active === "overview" && <section className="lp-view">
           <div className="lp-view-heading"><div><p className="lp-app-kicker">WEEKLY COMMAND CENTER</p><h1>{leagueName}</h1><p>{workspaceName} · {season === "—" ? "Season not synchronized" : `${season} season`} · Week {week}</p></div><div className="lp-heading-actions"><Button variant="outline" onClick={() => loadBootstrap()} disabled={refreshing}><RefreshCw className={refreshing ? "lp-spin" : ""} /> Refresh</Button><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div></div>
-          {!connected && <div className="lp-first-run"><div><span><Radar /></span><p className="lp-app-kicker">FIRST RUN</p><h2>Connect your ESPN league to activate the command center.</h2><p>Your account is ready. The dashboard stays honestly empty until the backend returns a synchronized league snapshot.</p></div><div className="lp-first-run-steps"><span className="done"><b>01</b><p><strong>Account created</strong><small>PocketBase authentication is active</small></p><Check /></span><span><b>02</b><p><strong>Connect ESPN</strong><small>Use the backend connection flow</small></p><Clock3 /></span><span><b>03</b><p><strong>Run first analysis</strong><small>Lineup, waivers, trades, and reports</small></p><Gauge /></span></div></div>}
+          {!connected && <div className="lp-first-run"><div><span><Radar /></span><p className="lp-app-kicker">FIRST RUN</p><h2>Connect your ESPN league to activate the command center.</h2><p>Your account is ready. The dashboard stays honestly empty until the backend returns a synchronized league snapshot.</p></div><div className="lp-first-run-steps"><span className="done"><b>01</b><p><strong>Account created</strong><small>PocketBase authentication is active</small></p><Check /></span><span><b>02</b><p><strong>Connect ESPN</strong><small>Add your league below</small></p><Clock3 /></span><span><b>03</b><p><strong>Run first analysis</strong><small>Lineup, waivers, trades, and reports</small></p><Gauge /></span></div>
+            {!previewMode && workspaceId && <ConnectEspnForm workspaceId={workspaceId} onConnected={() => { toast.success("League saved. A read-only sync is queued."); void loadBootstrap(true); scope.refresh(); }} />}
+          </div>}
           <div className="lp-status-grid">
             <article><span className={connected ? "good" : "warn"}>{connected ? <Check /> : <CircleAlert />}</span><p><small>ESPN CONNECTION</small><b>{connected ? "Connected" : "Action required"}</b><em>{connected ? leagueName : "No league snapshot"}</em></p></article>
             <article><span><CalendarDays /></span><p><small>LAST SUCCESSFUL SYNC</small><b>{dateLabel(lastSync)}</b><em>{lastSync ? "PocketBase snapshot" : "Waiting for first sync"}</em></p></article>
