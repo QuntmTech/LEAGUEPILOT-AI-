@@ -542,6 +542,7 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
     integer,
     nowIso,
     requireWorker,
+    requiredText,
     setPrivateResponse,
     usage,
     validateLease,
