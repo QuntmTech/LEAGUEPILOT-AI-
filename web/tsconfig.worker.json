@@ -1,0 +1,14 @@
+{
+  // worker/ and db/ run on the Cloudflare Workers runtime, not in a browser. Its globals
+  // (Fetcher, D1Database, the cloudflare:* module namespace) come from
+  // @cloudflare/workers-types, and its Response type differs from the DOM's — so these
+  // files are typechecked separately rather than forcing Worker globals onto app code.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": true
+  },
+  "include": ["worker/**/*.ts", "db/**/*.ts", "worker-env.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

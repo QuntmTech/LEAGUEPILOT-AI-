@@ -23,18 +23,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Toaster } from "@/components/ui/sonner";
+import { LeagueContextBar } from "@/components/league-context-bar";
+import { NAV_SECTIONS, type SectionId } from "@/lib/leaguepilot-nav";
+import { useLeagueScope } from "@/lib/use-league-scope";
 
 type Item = Record<string, unknown>;
-type SectionId = "overview" | "league" | "recommendations" | "reports" | "activity" | "settings";
 
-const navigation = [
-  { id: "overview" as const, label: "Overview", icon: LayoutDashboard },
-  { id: "league" as const, label: "My League", icon: Trophy },
-  { id: "recommendations" as const, label: "Recommendations", icon: ListChecks },
-  { id: "reports" as const, label: "Reports", icon: FileText },
-  { id: "activity" as const, label: "Activity", icon: Activity },
-  { id: "settings" as const, label: "Settings", icon: Settings },
-];
+// Navigation is defined once in lib/leaguepilot-nav so the sidebar, the mobile bar and
+// any future route mapping cannot drift apart.
+const navigation = NAV_SECTIONS;
 
 const previewData = {
   workspace: { id: "preview-workspace", name: "Sunday Strategists" },
@@ -101,6 +98,11 @@ function normalize(raw: unknown) {
   };
 }
 
+function workspaceIdOf(data: { workspace: Item }): string | null {
+  const id = data.workspace?.id;
+  return typeof id === "string" && id ? id : null;
+}
+
 function Brand() {
   return <Link href="/" className="lp-dash-brand" aria-label="LEAGUEPILOT AI homepage"><span>LP<small>AI</small></span><b>LEAGUEPILOT <em>AI</em></b></Link>;
 }
@@ -111,7 +113,7 @@ function AppSidebar({ active, onChange, recommendationCount }: { active: Section
   return <Sidebar collapsible="icon" className="lp-dashboard-sidebar">
     <SidebarHeader><Brand /></SidebarHeader>
     <SidebarContent><SidebarGroup><SidebarGroupLabel>Command center</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
-      {navigation.map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={active === id} tooltip={label} onClick={() => choose(id)}><Icon /><span>{label}</span></SidebarMenuButton>{id === "recommendations" && recommendationCount > 0 && <SidebarMenuBadge>{recommendationCount}</SidebarMenuBadge>}</SidebarMenuItem>)}
+      {navigation.map(({ id, label, icon: Icon }) => <SidebarMenuItem key={id}><SidebarMenuButton isActive={active === id} tooltip={label} onClick={() => choose(id)}><Icon /><span>{label}</span></SidebarMenuButton>{id === "moves" && recommendationCount > 0 && <SidebarMenuBadge>{recommendationCount}</SidebarMenuBadge>}</SidebarMenuItem>)}
     </SidebarMenu></SidebarGroupContent></SidebarGroup>
       <SidebarGroup><SidebarGroupLabel>Connection</SidebarGroupLabel><SidebarGroupContent><div className="lp-backend-status"><span /><p><b>PocketBase</b><small>Shared source of truth</small></p></div></SidebarGroupContent></SidebarGroup>
     </SidebarContent>
@@ -141,6 +143,17 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
   const [analysisJob, setAnalysisJob] = useState<Item>({});
   const [selectedRecommendation, setSelectedRecommendation] = useState<Item | null>(null);
   const data = useMemo(() => normalize(raw), [raw]);
+  // Live mode only: preview runs on fictional records and must not hit the backend.
+  const scope = useLeagueScope(previewMode ? null : (workspaceIdOf(data) ?? null));
+  // Both lists come straight from backend recommendations — nothing is synthesised.
+  const tradeRecommendations = useMemo(
+    () => scope.recommendations.filter((item) => item.kind === "trade"),
+    [scope.recommendations],
+  );
+  const alertRecommendations = useMemo(
+    () => scope.recommendations.filter((item) => item.kind === "availability-alert"),
+    [scope.recommendations],
+  );
 
   const loadBootstrap = useCallback(async (quiet = false) => {
     if (previewMode) {
@@ -240,6 +253,31 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
         {previewMode && <div className="lp-preview-banner"><Sparkles /><p><b>Interactive product preview</b><span>Every league, player, recommendation, and job shown here is fictional. Your protected <Link href="/app">/app dashboard</Link> reads only your PocketBase records.</span></p><Link href="/create-account">Create account <ArrowRight /></Link></div>}
         {error && <div className="lp-dashboard-error"><AlertTriangle /><span><b>Backend connection issue</b>{error}</span><Button variant="outline" onClick={() => loadBootstrap()}>Retry</Button></div>}
 
+        {!previewMode && (
+          <LeagueContextBar
+            workspaceName={typeof data.workspace?.name === "string" ? data.workspace.name : null}
+            connections={scope.connections}
+            connectionId={scope.connectionId}
+            connection={scope.connection}
+            latestJob={scope.latestJob}
+            busy={scope.status === "loading" || refreshing}
+            onSelect={scope.selectConnection}
+            onSync={() => {
+              const id = scope.connectionId;
+              if (!id) return;
+              void fetch(`/api/leaguepilot/connections/${id}/sync`, { method: "POST" })
+                .then((r) => r.json().catch(() => ({})))
+                .then((payload) => {
+                  if (payload?.message) toast.error(payload.message);
+                  else toast.success("Sync queued.");
+                  scope.refresh();
+                })
+                .catch(() => toast.error("We couldn't start that sync."));
+            }}
+            onRunAnalysis={runAnalysis}
+          />
+        )}
+
         {active === "overview" && <section className="lp-view">
           <div className="lp-view-heading"><div><p className="lp-app-kicker">WEEKLY COMMAND CENTER</p><h1>{leagueName}</h1><p>{workspaceName} · {season === "—" ? "Season not synchronized" : `${season} season`} · Week {week}</p></div><div className="lp-heading-actions"><Button variant="outline" onClick={() => loadBootstrap()} disabled={refreshing}><RefreshCw className={refreshing ? "lp-spin" : ""} /> Refresh</Button><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div></div>
           {!connected && <div className="lp-first-run"><div><span><Radar /></span><p className="lp-app-kicker">FIRST RUN</p><h2>Connect your ESPN league to activate the command center.</h2><p>Your account is ready. The dashboard stays honestly empty until the backend returns a synchronized league snapshot.</p></div><div className="lp-first-run-steps"><span className="done"><b>01</b><p><strong>Account created</strong><small>PocketBase authentication is active</small></p><Check /></span><span><b>02</b><p><strong>Connect ESPN</strong><small>Use the backend connection flow</small></p><Clock3 /></span><span><b>03</b><p><strong>Run first analysis</strong><small>Lineup, waivers, trades, and reports</small></p><Gauge /></span></div></div>}
@@ -250,7 +288,7 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
             <article><span><SearchCheck /></span><p><small>DATA QUALITY</small><b>{data.warnings.length ? `${data.warnings.length} warning${data.warnings.length === 1 ? "" : "s"}` : connected ? "No reported warnings" : "Not available"}</b><em>{data.warnings[0] ?? "Checked with each snapshot"}</em></p></article>
           </div>
           <div className="lp-overview-grid">
-            <article className="lp-panel lp-recommendation-panel"><div className="lp-panel-head"><div><p className="lp-app-kicker">TOP RECOMMENDATIONS</p><h2>What needs your attention</h2></div><Button variant="ghost" onClick={() => setActive("recommendations")}>View all <ArrowRight /></Button></div>
+            <article className="lp-panel lp-recommendation-panel"><div className="lp-panel-head"><div><p className="lp-app-kicker">TOP RECOMMENDATIONS</p><h2>What needs your attention</h2></div><Button variant="ghost" onClick={() => setActive("moves")}>View all <ArrowRight /></Button></div>
               {data.recommendations.length ? <div className="lp-rec-list">{data.recommendations.slice(0, 3).map((rec, index) => <button key={text(rec, ["id"], String(index))} onClick={() => setSelectedRecommendation(rec)}><span className="lp-rec-rank">0{index + 1}</span><div><small>{text(rec, ["kind", "type", "category"], "RECOMMENDATION").toUpperCase()}</small><b>{text(rec, ["title", "headline", "recommendation"], "Review recommendation")}</b><p>{text(rec, ["summary", "reason", "description"], "Open this recommendation to inspect the verified evidence.")}</p></div><Badge>{text(rec, ["confidence"], "Review")}</Badge><ArrowRight /></button>)}</div>
               : <EmptyState icon={ListChecks} title="No recommendations yet" copy={connected ? "Run Full Analysis to generate recommendations from the current league snapshot." : "Recommendations appear after your ESPN league is connected and analyzed."} action={workspaceId && <Button onClick={runAnalysis}><Play /> Run Full Analysis</Button>} />}
             </article>
@@ -266,8 +304,24 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
           {!connected ? <EmptyState icon={Trophy} title="No ESPN league connected" copy="Once the backend returns a league snapshot, this section will show real scoring settings, roster information, standings, and sync health." /> : <><div className="lp-league-hero"><div><span><Trophy /></span><div className="lp-league-title"><small>ACTIVE LEAGUE</small><h2>{leagueName}</h2><b>{season} season · Week {week}</b></div></div><div><span><small>TEAMS</small><b>{count(data.league, ["team_count", "teams"], list(data.league.teams).length) || "—"}</b></span><span><small>ROSTERED PLAYERS</small><b>{data.roster.length || "—"}</b></span><span><small>LAST SYNC</small><b>{dateLabel(lastSync)}</b></span></div></div><div className="lp-panel"><div className="lp-panel-head"><div><p className="lp-app-kicker">YOUR ROSTER</p><h2>Current synchronized players</h2></div></div>{data.roster.length ? <div className="lp-roster-grid">{data.roster.map((player, index) => <article key={text(player, ["id"], String(index))}><span>{text(player, ["position"], "—")}</span><p><b>{text(player, ["name", "full_name", "player_name"], "Unnamed player")}</b><small>{text(player, ["team", "pro_team"], "Team unavailable")}</small></p><em>{text(player, ["status"], "Active")}</em></article>)}</div> : <EmptyState icon={Users} title="Roster data has not arrived" copy="The connected backend has not returned roster records for this league." />}</div></>}
         </section>}
 
-        {active === "recommendations" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DECISION QUEUE</p><h1>Recommendations</h1><p>Review impact, confidence, evidence, and risks before deciding.</p></div><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div>
+        {active === "moves" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DECISION QUEUE</p><h1>Recommendations</h1><p>Review impact, confidence, evidence, and risks before deciding.</p></div><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div>
           {data.recommendations.length ? <div className="lp-recommendations-grid">{data.recommendations.map((rec, index) => <article key={text(rec, ["id"], String(index))}><div><span>0{index + 1}</span><Badge>{text(rec, ["kind", "type"], "Decision")}</Badge></div><h2>{text(rec, ["title", "headline", "recommendation"], "Review recommendation")}</h2><p>{text(rec, ["summary", "reason", "description"], "Evidence is available in the recommendation record.")}</p><div className="lp-rec-meta"><span><small>CONFIDENCE</small><b>{text(rec, ["confidence"], "Not supplied")}</b></span><span><small>EST. IMPACT</small><b>{text(rec, ["impact", "estimated_impact"], "Not supplied")}</b></span><span><small>RISK</small><b>{text(rec, ["risk", "risk_level"], "Not supplied")}</b></span></div><Button variant="outline" onClick={() => setSelectedRecommendation(rec)}><SearchCheck /> Review evidence</Button></article>)}</div> : <EmptyState icon={ListChecks} title="Your decision queue is empty" copy={connected ? "Run Full Analysis to build a fresh queue from the latest snapshot." : "Connect and synchronize an ESPN league before requesting analysis."} action={workspaceId && <Button onClick={runAnalysis}><Play /> Run Full Analysis</Button>} />}
+        </section>}
+
+        {active === "trades" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">TRADE LAB</p><h1>Trade opportunities</h1><p>Realistic partners and pitches, generated from analysed opponent rosters.</p></div></div>
+          {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /></div>
+            : scope.status === "error" ? <EmptyState icon={CircleAlert} title="We couldn't load trades" copy={scope.error ?? "The backend did not respond."} action={<Button variant="outline" onClick={scope.refresh}><RefreshCw /> Try again</Button>} />
+            : scope.status === "no-connection" ? <EmptyState icon={Users} title="Connect a league first" copy="Trade Lab compares your roster against every other team in your league. Connect an ESPN league to begin." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
+            : tradeRecommendations.length === 0 ? <EmptyState icon={Users} title="No trade opportunities yet" copy="Trade analysis runs as part of a full analysis. Once it completes, realistic partners and copyable pitches appear here." action={<Button onClick={runAnalysis} disabled={!workspaceId}><Play /> Run analysis</Button>} />
+            : <div className="lp-recommendations-grid">{tradeRecommendations.map((item) => <article key={String(item.id)}><div><span>{String(item.kind ?? "trade").toUpperCase()}</span><Badge>{typeof item.confidence === "number" ? `${item.confidence}%` : "—"}</Badge></div><h2>{String(item.title ?? "Trade opportunity")}</h2><p>{String(item.summary ?? "")}</p><Button variant="outline" onClick={() => setSelectedRecommendation(item as Item)}>Review <ArrowRight /></Button></article>)}</div>}
+        </section>}
+
+        {active === "alerts" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DEADLINE CENTER</p><h1>Alerts</h1><p>Availability risks and deadlines detected from real league data.</p></div></div>
+          {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /></div>
+            : scope.status === "error" ? <EmptyState icon={CircleAlert} title="We couldn't load alerts" copy={scope.error ?? "The backend did not respond."} action={<Button variant="outline" onClick={scope.refresh}><RefreshCw /> Try again</Button>} />
+            : scope.status === "no-connection" ? <EmptyState icon={Bell} title="Connect a league first" copy="Alerts watch your starters for inactive tags, lineup locks and waiver deadlines. Connect an ESPN league to begin." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
+            : alertRecommendations.length === 0 ? <EmptyState icon={Bell} title="No alerts right now" copy="Nothing needs your attention in this league. Availability alerts appear here as soon as the backend reports one." />
+            : <div className="lp-recommendations-grid">{alertRecommendations.map((item) => <article key={String(item.id)}><div><span>ALERT</span><Badge>{typeof item.confidence === "number" ? `${item.confidence}%` : "—"}</Badge></div><h2>{String(item.title ?? "Availability alert")}</h2><p>{String(item.summary ?? "")}</p><Button variant="outline" onClick={() => setSelectedRecommendation(item as Item)}>Review <ArrowRight /></Button></article>)}</div>}
         </section>}
 
         {active === "reports" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">LEAGUE INTELLIGENCE</p><h1>Reports</h1><p>Weekly recaps, power rankings, matchup stories, and commissioner-ready copy.</p></div></div>
@@ -287,7 +341,25 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
         </div></section>}
       </div>
 
-      <nav className="lp-mobile-nav" aria-label="Dashboard navigation">{navigation.filter((item) => item.id !== "activity").map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "active" : ""} onClick={() => setActive(id)}><Icon /><span>{label === "Recommendations" ? "Decisions" : label}</span></button>)}<button onClick={() => setActive("activity")} className={active === "activity" ? "active" : ""}><Menu /><span>Activity</span></button></nav>
+      <nav className="lp-mobile-nav" aria-label="Dashboard sections">
+        {/* Eight sections do not fit a bottom bar. The four highest-frequency ones stay
+            reachable in one tap; the rest live behind More, which opens the same sidebar
+            used on desktop so there is only one navigation model to maintain. */}
+        {navigation.slice(0, 4).map(({ id, short, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={active === id ? "active" : ""}
+            aria-current={active === id ? "page" : undefined}
+            onClick={() => setActive(id)}
+          >
+            <Icon aria-hidden /><span>{short}</span>
+          </button>
+        ))}
+        <SidebarTrigger className="lp-mobile-more" aria-label="More sections">
+          <Menu aria-hidden /><span>More</span>
+        </SidebarTrigger>
+      </nav>
     </SidebarInset>
 
     <Dialog open={Boolean(selectedRecommendation)} onOpenChange={(open) => !open && setSelectedRecommendation(null)}><DialogContent className="lp-evidence-dialog"><DialogHeader><Badge>RECOMMENDATION EVIDENCE</Badge><DialogTitle>{selectedRecommendation ? text(selectedRecommendation, ["title", "headline", "recommendation"], "Recommendation") : ""}</DialogTitle><DialogDescription>Read-only evidence from the current PocketBase record.</DialogDescription></DialogHeader>{selectedRecommendation && <div className="lp-evidence-content"><div className="lp-rec-meta"><span><small>CONFIDENCE</small><b>{text(selectedRecommendation, ["confidence"], "Not supplied")}</b></span><span><small>EST. IMPACT</small><b>{text(selectedRecommendation, ["impact", "estimated_impact"], "Not supplied")}</b></span><span><small>RISK</small><b>{text(selectedRecommendation, ["risk", "risk_level"], "Not supplied")}</b></span></div><section><h3>Why this is recommended</h3><p>{text(selectedRecommendation, ["reason", "summary", "description"], "The backend record did not supply an explanation.")}</p></section><section><h3>Evidence</h3><p>{text(selectedRecommendation, ["evidence", "evidence_summary"], "No evidence summary was supplied in this record.")}</p></section><p className="lp-settings-honesty"><ShieldCheck /> Review only. No ESPN action is submitted from this dialog.</p></div>}</DialogContent></Dialog>

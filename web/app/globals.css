@@ -2,6 +2,22 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+/* Scrollbar utilities used by components/ui/message-scroller.tsx and attachment.tsx
+   (scrollbar-thin, scrollbar-none, scrollbar-gutter-stable). They were referenced by
+   those components but defined nowhere, so Tailwind emitted no rule and the styling
+   silently did nothing. Defining them here restores the intended behaviour. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+
 :root {
   --forest:#122f28; --green:#1d5949; --green2:#2f7a63; --paper:#f5f1e8;
   --paper2:#ece6da; --white:#fffdf8; --lime:#b8dc73; --gold:#e4b949;
@@ -53,6 +69,8 @@ h2 em,h1 em { color:var(--green2); font-style:normal; }
 .desktop-nav { display:flex; align-items:center; gap:30px; margin:auto; }
 .desktop-nav a { font-size:13px; font-weight:650; color:#43514d; transition:.2s; }
 .desktop-nav a:hover { color:var(--green); }
+.nav-signin { margin-right:20px; font-size:13px; font-weight:750; color:var(--green); transition:.2s; }
+.nav-signin:hover { color:var(--forest); }
 .nav-cta,.primary-cta { min-height:44px; border-radius:9px!important; background:var(--green)!important; box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 8px 20px rgba(29,89,73,.18); }
 .mobile-menu { display:none!important; margin-left:auto; }
 .mobile-sheet { width:min(90vw,400px)!important; background:var(--paper)!important; padding:18px!important; }
@@ -61,6 +79,8 @@ h2 em,h1 em { color:var(--green2); font-style:normal; }
 .mobile-sheet nav a span { color:var(--green2); font-size:10px; letter-spacing:.12em; }
 .mobile-sheet nav a svg { margin-left:auto; width:18px; }
 .mobile-sheet-cta { margin-top:24px; width:100%; min-height:52px; }
+.mobile-sheet-signin { min-height:48px; display:flex; align-items:center; justify-content:center; margin-top:10px; color:var(--muted); font-size:13px; font-weight:600; }
+.mobile-sheet-signin b { margin-left:5px; color:var(--green); font-weight:800; }
 
 /* hero */
 .hero { position:relative; padding:155px 30px 0; background:linear-gradient(180deg,#f7f3eb 0%,#efe9dd 100%); }
@@ -440,7 +460,11 @@ h2 em,h1 em { color:var(--green2); font-style:normal; }
 }
 @media (max-width:760px) {
   .section { padding:78px 20px; }
-  .desktop-nav,.nav-cta { display:none!important; }.mobile-menu { display:inline-flex!important; }
+  /* Sign in stays visible on mobile — it is the only entry point to the app, and
+     burying it in the drawer under the Founder Beta CTA made it undiscoverable.
+     Layout becomes: Logo ......... [Sign in] [hamburger]. */
+  .desktop-nav,.nav-cta { display:none!important; }.mobile-menu { display:inline-flex!important; margin-left:0; }
+  .nav-signin { min-height:44px; display:inline-flex; align-items:center; margin-left:auto; margin-right:14px; }
   .site-header { padding:8px; }.nav-wrap { height:58px; padding:0 8px 0 13px; border-radius:12px; }
   .logo-mark { width:35px; height:35px; }.logo-type { font-size:13px; }
   .hero { padding:118px 14px 0; }.field-lines:before { width:290px; height:290px; top:90px; }

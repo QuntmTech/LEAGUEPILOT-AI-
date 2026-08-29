@@ -38,6 +38,67 @@ export async function readJson(response: Response) {
   }
 }
 
+/**
+ * PocketBase record ids are exactly 15 lowercase alphanumerics. Validating before
+ * interpolating into a backend path keeps caller-supplied values out of the URL.
+ */
+export function isRecordId(value: string): boolean {
+  return /^[a-z0-9]{15}$/.test(value);
+}
+
+/**
+ * Collections the dashboard may read directly, with the sort field to use for each.
+ *
+ * Only `users` has `created`/`updated` autodate fields — `recommendations`, `reports`,
+ * `job_runs`, `league_snapshots` and `workspaces` have none, so `sort=-created` returns
+ * HTTP 400 rather than an empty list. Sorts are pinned here so a caller cannot
+ * reintroduce that bug. `id` is random, not time-ordered, so it is never a recency proxy.
+ */
+export const READABLE_COLLECTIONS = {
+  recommendations: {
+    sort: "-confidence",
+    fields:
+      "id,workspace,kind,title,summary,confidence,impact_points,payload,status,expires_at,reviewed_at",
+  },
+  reports: {
+    sort: "-published_at",
+    fields: "id,workspace,week,title,body_markdown,metrics,narration_mode,published_at",
+  },
+  job_runs: {
+    // lease_token_hash, worker_id and raw result are deliberately excluded — operational
+    // internals must never reach the browser.
+    sort: "-scheduled_for",
+    fields:
+      "id,workspace,connection,kind,status,attempts,max_attempts,scheduled_for,started_at,completed_at,last_error",
+  },
+  league_snapshots: {
+    // No recency field exists on this collection, so no sort is applied.
+    sort: "",
+    fields: "id,workspace,connection,season,week,captured_at",
+  },
+  espn_connections: {
+    // Credential ciphertext columns are never listed, so they cannot be returned.
+    sort: "-last_synced_at",
+    fields: "id,workspace,league_id,season,label,visibility,status,last_synced_at,last_error",
+  },
+} as const;
+
+export type ReadableCollection = keyof typeof READABLE_COLLECTIONS;
+
+export function isReadableCollection(value: string): value is ReadableCollection {
+  return Object.prototype.hasOwnProperty.call(READABLE_COLLECTIONS, value);
+}
+
+/** Read the session token, or null when the request is unauthenticated. */
+export async function sessionToken(): Promise<string | null> {
+  const { cookies } = await import("next/headers");
+  return (await cookies()).get(LEAGUEPILOT_AUTH_COOKIE)?.value ?? null;
+}
+
+export function unauthorized() {
+  return Response.json({ message: "Not authenticated." }, { status: 401 });
+}
+
 export function publicError(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object") {
     const value = payload as Record<string, unknown>;
