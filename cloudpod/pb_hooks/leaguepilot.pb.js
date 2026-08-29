@@ -275,7 +275,7 @@ routerAdd(
   "POST",
   "/api/leaguepilot/recommendations/{id}/review",
   (e) => {
-    const { audit, bodyOf, cleanText, ownedRecord, setPrivateResponse } = require(
+    const { audit, bodyOf, cleanText, nowIso, ownedRecord, setPrivateResponse } = require(
       `${__hooks}/leaguepilot_lib.js`,
     );
     setPrivateResponse(e);
@@ -707,6 +707,7 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/fail", (e) => {
     audit,
     bodyOf,
     cleanText,
+    enqueueInactiveSweeps,
     nowIso,
     requireWorker,
     setPrivateResponse,
