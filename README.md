@@ -73,19 +73,11 @@ ESPN does not publish or support this fantasy API. The connector is therefore is
 
 ## Scheduled jobs
 
-After deployment, call the protected endpoint with `X-Job-Token`:
-
-```bash
-curl --fail-with-body \
-  --request POST \
-  --header "Content-Type: application/json" \
-  --header "X-Job-Token: YOUR_FCC_JOB_TOKEN" \
-  --data '{"kind":"lineup","notify":true}' \
-  https://YOUR_DEPLOYMENT.example/api/internal/jobs/run
-```
-
-The included GitHub Actions workflow shows the four weekly runs. Add `FCC_BASE_URL` and
-`FCC_JOB_TOKEN` as repository secrets before enabling scheduled runs in a hosted repository.
+CloudPod queues tenant-scoped lineup-lock sweeps and analysis requests. The included GitHub Actions
+workflow is a cost-efficient founder-beta worker that drains that queue every five minutes. Add the
+repository Actions secret `FCC_CLOUDPOD_WORKER_KEY` with the same value as CloudPod's existing
+`LEAGUEPILOT_WORKER_KEY`; never put the value in source. Move to monitored long-running container
+workers before promising real-time service at production scale.
 
 ## Hosted CloudPod worker
 
