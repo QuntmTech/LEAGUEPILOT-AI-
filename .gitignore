@@ -22,3 +22,4 @@ start-leaguepilot.sh
 RESTART
 web/app.mjs
 web/tsconfig.tsbuildinfo
+web/*.tsbuildinfo

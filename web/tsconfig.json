@@ -30,5 +30,18 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // worker/ and db/ target the Cloudflare Workers runtime and are typechecked by
+  // tsconfig.worker.json, whose globals (Fetcher, D1Database) conflict with the DOM lib.
+  "exclude": [
+    "node_modules",
+    "dist",
+    // worker/ and db/ target the Cloudflare Workers runtime; they are typechecked by
+    // tsconfig.worker.json, whose globals conflict with the DOM lib.
+    "worker",
+    "db",
+    // Starter-template scaffolding. Nothing in the app imports it and no build input
+    // references it, but examples/d1 imports ../../../../../db, which dragged
+    // Worker-runtime code into this DOM-typed program.
+    "examples"
+  ]
 }

@@ -2,6 +2,22 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+/* Scrollbar utilities used by components/ui/message-scroller.tsx and attachment.tsx
+   (scrollbar-thin, scrollbar-none, scrollbar-gutter-stable). They were referenced by
+   those components but defined nowhere, so Tailwind emitted no rule and the styling
+   silently did nothing. Defining them here restores the intended behaviour. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+
 :root {
   --forest:#122f28; --green:#1d5949; --green2:#2f7a63; --paper:#f5f1e8;
   --paper2:#ece6da; --white:#fffdf8; --lime:#b8dc73; --gold:#e4b949;
