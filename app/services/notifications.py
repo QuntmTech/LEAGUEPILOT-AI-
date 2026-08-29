@@ -17,7 +17,7 @@ def deliver(
     timeout: float = 10.0,
     transport: httpx.BaseTransport | None = None,
 ) -> None:
-    bounded_message = message[:8000]
+    bounded_message = _safe_outbound_text(message)[:8000]
     try:
         with httpx.Client(
             timeout=httpx.Timeout(timeout),
@@ -44,3 +44,11 @@ def deliver(
         ) from exc
     except httpx.HTTPError as exc:
         raise NotificationError(f"{kind} delivery failed due to a network error") from exc
+
+
+def _safe_outbound_text(message: str) -> str:
+    cleaned = message.replace("\x00", "")
+    # League/team names are untrusted; prevent mass mentions in shared league chats.
+    cleaned = cleaned.replace("@everyone", "@\u200beveryone")
+    cleaned = cleaned.replace("@here", "@\u200bhere")
+    return cleaned

@@ -7,17 +7,22 @@ delivery and a human approval ledger in one local-first application.
 > **Locked product name:** LEAGUEPILOT AI. Existing `FCC_` environment variables remain supported
 > so upgrading the earlier founder build does not invalidate configuration or secrets.
 
-## What works in v0.3.0
+## What works in v0.4.0
 
 - Connects public or private ESPN Fantasy Football leagues through an isolated read-only HTTPX
   adapter, without handing account cookies to a third-party service.
 - Encrypts `espn_s2`, `SWID`, Discord webhooks and GroupMe bot IDs with AES-256-GCM.
-- Produces injury-aware lineup optimization without inventing missing projections.
+- Enriches ESPN snapshots with independent nflverse practice participation and weekly game-status
+  reports in the zero-cost founder beta, with visible missing/stale-data warnings.
+- Keeps the normalized availability contract provider-neutral so licensed Sportradar or
+  SportsDataIO 90-minute inactive feeds can replace the beta source without rewriting analysis.
 - Ranks waiver upgrades against a real drop candidate and suggests bounded FAAB percentages.
-- Finds preliminary trade matches based on both teams' position strengths and needs.
-- Creates transparent power rankings and weekly league reports.
+- Finds preliminary trade matches based on both teams' position strengths and needs, then generates
+  a copy-paste pitch written for the other manager.
+- Creates transparent power rankings and safer, personality-forward weekly league reports.
 - Uses a deterministic rules narrator for free; Gemini and OpenAI-compatible narration are optional.
-- Runs scheduled jobs for every connected workspace and can post results to Discord or GroupMe.
+- Runs connection-scoped analysis for multiple leagues per user, schedules lineup-lock sweeps, and
+  can post idempotent results to encrypted Discord or GroupMe channels.
 - Records connections, syncs, recommendations, approvals, dismissals, reports and jobs in an audit log.
 - Shows the exact projection source, risk flags, trade fairness and mutual-fit evidence behind moves.
 - Manages encrypted Discord/GroupMe channels, report history and audit activity from the dashboard.
@@ -68,23 +73,15 @@ ESPN does not publish or support this fantasy API. The connector is therefore is
 
 ## Scheduled jobs
 
-After deployment, call the protected endpoint with `X-Job-Token`:
-
-```bash
-curl --fail-with-body \
-  --request POST \
-  --header "Content-Type: application/json" \
-  --header "X-Job-Token: YOUR_FCC_JOB_TOKEN" \
-  --data '{"kind":"lineup","notify":true}' \
-  https://YOUR_DEPLOYMENT.example/api/internal/jobs/run
-```
-
-The included GitHub Actions workflow shows the four weekly runs. Add `FCC_BASE_URL` and
-`FCC_JOB_TOKEN` as repository secrets before enabling scheduled runs in a hosted repository.
+CloudPod queues tenant-scoped lineup-lock sweeps and analysis requests. The included GitHub Actions
+workflow is a cost-efficient founder-beta worker that drains that queue every five minutes. Add the
+repository Actions secret `FCC_CLOUDPOD_WORKER_KEY` with the same value as CloudPod's existing
+`LEAGUEPILOT_WORKER_KEY`; never put the value in source. Move to monitored long-running container
+workers before promising real-time service at production scale.
 
 ## Hosted CloudPod worker
 
-The live v0.3.0 control plane is `https://leaguepilot-ai.cloudpod.pro`. Configure a worker with
+The live v0.4.0 control plane is `https://leaguepilot-ai.cloudpod.pro`. Configure a worker with
 `FCC_CLOUDPOD_URL`, `FCC_CLOUDPOD_WORKER_KEY` and a unique `FCC_CLOUDPOD_WORKER_ID`, then run:
 
 ```bash
@@ -115,7 +112,7 @@ and [docs/CHATGPT_SITES_DASHBOARD_PROMPT.md](docs/CHATGPT_SITES_DASHBOARD_PROMPT
 
 ## Honest limitations
 
-- v0.3.0 is a hosted multi-tenant beta foundation, not an unrestricted public SaaS launch.
+- v0.4.0 is a hosted multi-tenant beta foundation, not an unrestricted public SaaS launch.
 - Authentication is founder-token-to-HTTP-only-session with single-instance throttling. Public
   launch needs verified email/OAuth, passwordless recovery, distributed rate limiting and
   transactional email.
@@ -126,6 +123,8 @@ and [docs/CHATGPT_SITES_DASHBOARD_PROMPT.md](docs/CHATGPT_SITES_DASHBOARD_PROMPT
   Browser-driven execution is intentionally excluded until account-risk and terms are resolved.
 - Live ESPN validation requires the user's league ID and credentials and was not performed with
   synthetic test data.
+- nflverse is suitable for the cheap founder beta but is not the contractual real-time inactive
+  feed for a paid launch. A licensed provider remains a production launch gate.
 
 ## Ownership and licensing
 
@@ -142,4 +141,6 @@ The complete production web experience now lives in [`web/`](web/):
 - Fictional interactive review route at `/dashboard-preview`
 - Responsive desktop, iPhone, and Android web layouts
 
-Start with [`docs/WEB_DASHBOARD_HANDOFF.md`](docs/WEB_DASHBOARD_HANDOFF.md) before editing or deploying the web application. The existing Python backend and the mobile application remain separate from `web/`.
+Start with [`docs/WEB_DASHBOARD_HANDOFF.md`](docs/WEB_DASHBOARD_HANDOFF.md) before editing or
+deploying the web application. The existing Python backend and the mobile application remain
+separate from `web/`.

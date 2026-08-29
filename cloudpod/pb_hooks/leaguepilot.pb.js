@@ -201,7 +201,7 @@ routerAdd(
       bodyOf,
       cleanText,
       enqueueJob,
-      findOptional,
+      ownedRecord,
       ownedWorkspace,
       setPrivateResponse,
     } = require(`${__hooks}/leaguepilot_lib.js`);
@@ -209,17 +209,48 @@ routerAdd(
     const userId = authId(e);
     const workspace = ownedWorkspace(e, e.request.pathValue("workspaceId"));
     const body = bodyOf(e);
-    const allowed = ["lineup", "waivers", "trades", "weekly-report", "full"];
+    const allowed = [
+      "lineup",
+      "waivers",
+      "trades",
+      "weekly-report",
+      "inactive-sweep",
+      "full",
+    ];
     const kind = cleanText(body.kind, 30);
     if (allowed.indexOf(kind) === -1) throw new BadRequestError("Analysis kind is invalid");
+    const requestedConnectionId = cleanText(body.connection_id, 15);
+    let connection = null;
+    if (requestedConnectionId) {
+      connection = ownedRecord(e, "espn_connections", requestedConnectionId);
+      if (connection.getString("workspace") !== workspace.id) {
+        throw new NotFoundError("ESPN connection not found");
+      }
+      if (connection.getString("status") === "disabled") {
+        throw new BadRequestError("The selected ESPN connection is disabled");
+      }
+    } else {
+      const connections = $app.findRecordsByFilter(
+        "espn_connections",
+        "workspace = {:workspace} && status != 'disabled'",
+        "-last_synced_at",
+        2,
+        0,
+        { workspace: workspace.id },
+      );
+      if (!connections.length) throw new BadRequestError("Connect ESPN before running analysis");
+      if (connections.length > 1) {
+        throw new BadRequestError("connection_id is required when a workspace has multiple leagues");
+      }
+      connection = connections[0];
+    }
     const key =
-      "analysis:" + workspace.id + ":" + kind + ":" + new Date().toISOString().slice(0, 16);
-    const connection = findOptional(
-      "espn_connections",
-      "workspace = {:workspace} && status != 'disabled'",
-      { workspace: workspace.id },
-    );
-    if (!connection) throw new BadRequestError("Connect ESPN before running analysis");
+      "analysis:" +
+      connection.id +
+      ":" +
+      kind +
+      ":" +
+      new Date().toISOString().slice(0, 16);
     const job = enqueueJob($app, {
       owner: userId,
       workspace: workspace.id,
@@ -227,9 +258,14 @@ routerAdd(
       kind: kind,
       priority: 70,
       idempotencyKey: key,
-      payload: { notify: body.notify === true },
+      payload: { notify: body.notify === true, connection_id: connection.id },
     });
-    return e.json(202, { queued: true, job_id: job.id, status: job.getString("status") });
+    return e.json(202, {
+      queued: true,
+      job_id: job.id,
+      connection_id: connection.id,
+      status: job.getString("status"),
+    });
   },
   $apis.requireAuth("users"),
   $apis.bodyLimit(8 * 1024),
@@ -271,6 +307,102 @@ routerAdd(
   $apis.bodyLimit(4 * 1024),
 );
 
+routerAdd(
+  "POST",
+  "/api/leaguepilot/workspaces/{workspaceId}/notifications",
+  (e) => {
+    const {
+      audit,
+      authId,
+      bodyOf,
+      cleanText,
+      encryptionKey,
+      ownedWorkspace,
+      requiredText,
+      setPrivateResponse,
+    } = require(`${__hooks}/leaguepilot_lib.js`);
+    setPrivateResponse(e);
+    const userId = authId(e);
+    const workspace = ownedWorkspace(e, e.request.pathValue("workspaceId"));
+    const body = bodyOf(e);
+    const kind = cleanText(body.kind, 20);
+    const label = requiredText(body.label, "Channel label", 80);
+    const target = requiredText(body.target, "Notification target", 2048);
+    if (["discord", "groupme"].indexOf(kind) === -1) {
+      throw new BadRequestError("Notification kind is invalid");
+    }
+    if (kind === "discord") {
+      const discordPattern =
+        /^https:\/\/(www\.)?(discord\.com|discordapp\.com)\/api\/webhooks\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+      if (!discordPattern.test(target)) {
+        throw new BadRequestError("Discord target must be an official HTTPS webhook URL");
+      }
+    } else if (!/^[A-Za-z0-9_-]{10,100}$/.test(target)) {
+      throw new BadRequestError("GroupMe target must be a valid bot ID");
+    }
+
+    const channel = new Record($app.findCollectionByNameOrId("notification_channels"));
+    channel.set("owner", userId);
+    channel.set("workspace", workspace.id);
+    channel.set("kind", kind);
+    channel.set("label", label);
+    channel.set("target_ciphertext", $security.encrypt(target, encryptionKey()));
+    channel.set("is_active", true);
+    channel.set("failure_count", 0);
+    $app.save(channel);
+    audit(
+      $app,
+      userId,
+      workspace.id,
+      userId,
+      "notification.created",
+      "notification_channel",
+      channel.id,
+      { kind: kind },
+    );
+    return e.json(201, {
+      channel: {
+        id: channel.id,
+        kind: kind,
+        label: label,
+        is_active: true,
+      },
+    });
+  },
+  $apis.requireAuth("users"),
+  $apis.bodyLimit(8 * 1024),
+);
+
+routerAdd(
+  "POST",
+  "/api/leaguepilot/notifications/{id}/disable",
+  (e) => {
+    const { audit, encryptionKey, ownedRecord, setPrivateResponse } = require(
+      `${__hooks}/leaguepilot_lib.js`,
+    );
+    setPrivateResponse(e);
+    const channel = ownedRecord(e, "notification_channels", e.request.pathValue("id"));
+    channel.set("is_active", false);
+    channel.set(
+      "target_ciphertext",
+      $security.encrypt($security.randomString(48), encryptionKey()),
+    );
+    $app.save(channel);
+    audit(
+      $app,
+      channel.getString("owner"),
+      channel.getString("workspace"),
+      e.auth.id,
+      "notification.disabled",
+      "notification_channel",
+      channel.id,
+      { kind: channel.getString("kind") },
+    );
+    return e.json(200, { id: channel.id, is_active: false });
+  },
+  $apis.requireAuth("users"),
+);
+
 routerAdd("POST", "/api/leaguepilot/internal/workers/heartbeat", (e) => {
   const {
     bodyOf,
@@ -301,6 +433,7 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/claim", (e) => {
   const {
     bodyOf,
     encryptionKey,
+    findOptional,
     nowIso,
     requiredText,
     requireWorker,
@@ -342,6 +475,38 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/claim", (e) => {
         String($security.decrypt(connection.getString("credentials_ciphertext"), encryptionKey())),
       );
     }
+    let notification = null;
+    let notificationUnavailable = false;
+    const jobPayload = job.get("payload") || {};
+    if (job.getString("kind") === "notification") {
+      const channelId = requiredText(jobPayload.channel_id, "Channel ID", 15);
+      const channel = findOptional("notification_channels", "id = {:id}", { id: channelId }, txApp);
+      if (
+        !channel ||
+        channel.getString("owner") !== job.getString("owner") ||
+        channel.getString("workspace") !== job.getString("workspace") ||
+        !channel.getBool("is_active")
+      ) {
+        notificationUnavailable = true;
+        job.set("status", "cancelled");
+        job.set("last_error", "Notification channel is unavailable");
+        job.set("completed_at", nowIso());
+        job.set("lease_expires_at", "");
+        job.set("lease_token_hash", "");
+        job.set("worker_id", "");
+        txApp.save(job);
+      } else {
+        notification = {
+          channel_id: channel.id,
+          kind: channel.getString("kind"),
+          target: String(
+            $security.decrypt(channel.getString("target_ciphertext"), encryptionKey()),
+          ),
+          message: requiredText(jobPayload.message, "Notification message", 8000),
+        };
+      }
+    }
+    if (notificationUnavailable) return;
     claimed = {
       id: job.id,
       kind: job.getString("kind"),
@@ -358,6 +523,7 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/claim", (e) => {
           }
         : null,
       payload: job.get("payload") || {},
+      notification: notification,
       attempt: attempts,
       max_attempts: job.getInt("max_attempts"),
       lease_token: leaseToken,
@@ -372,6 +538,7 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
     audit,
     bodyOf,
     cleanText,
+    enqueueJob,
     integer,
     nowIso,
     requireWorker,
@@ -407,7 +574,13 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
     const recommendations = Array.isArray(body.recommendations)
       ? body.recommendations.slice(0, 100)
       : [];
-    if (recommendations.length) {
+    const incomingKinds = {};
+    recommendations.forEach((item) => {
+      incomingKinds[cleanText(item.kind, 30)] = true;
+    });
+    // A clean sweep must retire an earlier OUT alert for the same league.
+    if (job.getString("kind") === "inactive-sweep") incomingKinds["availability-alert"] = true;
+    if (Object.keys(incomingKinds).length) {
       const existing = txApp.findRecordsByFilter(
         "recommendations",
         "workspace = {:workspace} && status = 'proposed'",
@@ -417,10 +590,18 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
         { workspace: workspace },
       );
       existing.forEach((record) => {
+        if (!incomingKinds[record.getString("kind")]) return;
+        const oldSnapshotId = record.getString("snapshot");
+        if (job.getString("connection") && oldSnapshotId) {
+          const oldSnapshot = txApp.findRecordById("league_snapshots", oldSnapshotId);
+          if (oldSnapshot.getString("connection") !== job.getString("connection")) return;
+        }
         record.set("status", "superseded");
         record.set("reviewed_at", nowIso());
         txApp.save(record);
       });
+    }
+    if (recommendations.length) {
       recommendations.forEach((item) => {
         const record = new Record(txApp.findCollectionByNameOrId("recommendations"));
         record.set("owner", owner);
@@ -452,6 +633,33 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
       txApp.save(report);
     }
 
+    const jobPayload = job.get("payload") || {};
+    const notificationMessage = cleanText(body.notification_message, 8000);
+    if (
+      job.getString("kind") !== "notification" &&
+      jobPayload.notify === true &&
+      notificationMessage
+    ) {
+      const channels = txApp.findRecordsByFilter(
+        "notification_channels",
+        "workspace = {:workspace} && is_active = true",
+        "created",
+        25,
+        0,
+        { workspace: workspace },
+      );
+      channels.forEach((channel) => {
+        enqueueJob(txApp, {
+          owner: owner,
+          workspace: workspace,
+          kind: "notification",
+          priority: job.getString("kind") === "inactive-sweep" ? 100 : 60,
+          idempotencyKey: "notification:" + job.id + ":" + channel.id,
+          payload: { channel_id: channel.id, message: notificationMessage },
+        });
+      });
+    }
+
     const connectionId = job.getString("connection");
     if (connectionId && body.connection_status !== "unchanged") {
       const connection = txApp.findRecordById("espn_connections", connectionId);
@@ -469,6 +677,21 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/complete", (e) => {
     job.set("lease_token_hash", "");
     job.set("result", body.result || {});
     txApp.save(job);
+    if (job.getString("kind") === "notification") {
+      const result = body.result || {};
+      const channelId = cleanText(result.channel_id, 15);
+      if (channelId) {
+        const channel = txApp.findRecordById("notification_channels", channelId);
+        if (
+          channel.getString("owner") === owner &&
+          channel.getString("workspace") === workspace
+        ) {
+          channel.set("last_delivered_at", nowIso());
+          channel.set("failure_count", 0);
+          txApp.save(channel);
+        }
+      }
+    }
     audit(txApp, owner, workspace, "", "job.succeeded", "job_run", job.id, {
       kind: job.getString("kind"),
       attempt: job.getInt("attempts"),
@@ -512,6 +735,22 @@ routerAdd("POST", "/api/leaguepilot/internal/jobs/{id}/fail", (e) => {
     connection.set("sync_failures", connection.getInt("sync_failures") + 1);
     $app.save(connection);
   }
+  if (job.getString("kind") === "notification") {
+    const payload = job.get("payload") || {};
+    const channelId = cleanText(payload.channel_id, 15);
+    if (channelId) {
+      const channel = $app.findRecordById("notification_channels", channelId);
+      if (
+        channel.getString("owner") === job.getString("owner") &&
+        channel.getString("workspace") === job.getString("workspace")
+      ) {
+        const failures = channel.getInt("failure_count") + 1;
+        channel.set("failure_count", failures);
+        if (!retryable || failures >= 5) channel.set("is_active", false);
+        $app.save(channel);
+      }
+    }
+  }
   audit(
     $app,
     job.getString("owner"),
@@ -546,4 +785,22 @@ cronAdd("leaguepilot-requeue-expired-leases", "*/2 * * * *", () => {
     else job.set("completed_at", nowIso());
     $app.save(job);
   });
+});
+
+// UTC lock windows cover both daylight- and standard-time NFL schedules.
+cronAdd("leaguepilot-thursday-lock-sweeps", "45 22-23 * * 4", () => {
+  const { enqueueInactiveSweeps } = require(`${__hooks}/leaguepilot_lib.js`);
+  enqueueInactiveSweeps($app, new Date().toISOString().slice(0, 16));
+});
+cronAdd("leaguepilot-sunday-lock-sweeps", "30 15-23 * * 0", () => {
+  const { enqueueInactiveSweeps } = require(`${__hooks}/leaguepilot_lib.js`);
+  enqueueInactiveSweeps($app, new Date().toISOString().slice(0, 16));
+});
+cronAdd("leaguepilot-monday-lock-sweeps", "45 23 * * 1", () => {
+  const { enqueueInactiveSweeps } = require(`${__hooks}/leaguepilot_lib.js`);
+  enqueueInactiveSweeps($app, new Date().toISOString().slice(0, 16));
+});
+cronAdd("leaguepilot-monday-late-lock-sweeps", "45 0 * * 2", () => {
+  const { enqueueInactiveSweeps } = require(`${__hooks}/leaguepilot_lib.js`);
+  enqueueInactiveSweeps($app, new Date().toISOString().slice(0, 16));
 });

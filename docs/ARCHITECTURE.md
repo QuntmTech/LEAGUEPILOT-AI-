@@ -7,6 +7,7 @@ flowchart TD
     A[Browser session] --> B[Workspace authorization]
     B --> C[Encrypted ESPN connection]
     C --> D[Normalized snapshot]
+    J[Independent availability adapter] --> D
     D --> E[Deterministic analyzers]
     E --> F[Recommendation queue]
     F --> G[Human decision and audit]
@@ -17,6 +18,8 @@ flowchart TD
 ## Boundaries
 
 - `app/services/espn.py` is the only ESPN HTTP boundary. Provider drift stays localized.
+- `app/services/availability.py` is the independent availability boundary. The zero-cost beta uses
+  nflverse; commercial feeds must implement the same normalized `AvailabilityGateway` contract.
 - `LeagueSnapshot` is the stable internal contract. Analysis never reads raw ESPN objects.
 - `app/services/analysis.py` is deterministic and testable without an LLM or network.
 - `app/services/ai.py` receives bounded league facts as untrusted JSON. It returns prose only.
@@ -32,7 +35,7 @@ The beta uses SQLAlchemy with SQLite. The schema is already workspace-scoped. Po
 correct production choice when multiple application instances or concurrent workers are introduced.
 The migration trigger is a public paid beta, not an arbitrary row count.
 
-The hosted v0.3.0 path adds a PocketBase control plane and stateless Python workers. PocketBase owns
+The hosted v0.4.0 path adds a PocketBase control plane and stateless Python workers. PocketBase owns
 authentication, tenant policy, job leases, reports and audit data; workers own ESPN reads and the
 existing deterministic intelligence engine. See `docs/CLOUDPOD_BACKEND.md`.
 

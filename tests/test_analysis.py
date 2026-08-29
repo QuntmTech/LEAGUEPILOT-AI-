@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.schemas import LeagueSnapshot, Matchup, Player, Team
+from app.schemas import AvailabilitySignal, LeagueSnapshot, Matchup, Player, Team
 from app.services.analysis import (
+    analyze_availability_alerts,
     analyze_lineup,
     analyze_trades,
     analyze_waivers,
@@ -128,3 +129,33 @@ def test_trade_analysis_and_power_rankings_are_deterministic() -> None:
     assert rankings[0]["score"] > rankings[1]["score"]
     assert set(rankings[0]) >= {"record_score", "points_score", "projection_score"}
     assert rankings[0]["projected_total"] == 125
+
+
+def test_independent_out_report_creates_an_urgent_replacement_alert() -> None:
+    league = snapshot()
+    out_player = next(player for player in league.my_team.roster if player.id == "rb1")
+    out_player.availability = AvailabilitySignal(
+        source="nflverse",
+        week=league.week,
+        practice_status="DNP",
+        game_status="OUT",
+        primary_injury="Knee",
+    )
+
+    results = analyze_availability_alerts(league)
+
+    assert len(results) == 1
+    assert results[0].kind == "availability-alert"
+    assert results[0].payload["out_player_id"] == "rb1"
+    assert results[0].payload["replacement_player_id"] == "rb3"
+    assert results[0].payload["evidence_source"] == "nflverse"
+    assert results[0].payload["urgent"] is True
+
+
+def test_trade_recommendation_contains_a_copyable_partner_focused_pitch() -> None:
+    results = analyze_trades(snapshot())
+
+    assert results
+    pitch = str(results[0].payload["copy_paste_pitch"])
+    assert "would you consider" in pitch.lower()
+    assert "fair fit for both rosters" in pitch.lower()

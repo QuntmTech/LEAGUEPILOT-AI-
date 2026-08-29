@@ -19,6 +19,8 @@ snapshot and audit history.
 - Complete trademark, entity-name, domain and app-store research before public use of the locked
   LEAGUEPILOT AI name.
 - Validate ESPN 2026 data mapping against at least three real league configurations.
+- Replace the nflverse beta feed with a licensed provider whose contract permits commercial
+  redistribution and whose SLA covers 90-minute game-day inactive updates.
 - Run a private pilot for four NFL weeks and measure recommendation acceptance, data failures,
   notification engagement and AI cost per active league.
 - Add Yahoo/Sleeper only after the normalized snapshot contract passes provider conformance tests.

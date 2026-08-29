@@ -1,6 +1,6 @@
 {
   "project": "leaguepilot-ai",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "collections": [
     {
       "createRule": "",
@@ -909,7 +909,8 @@
           "values": [
             "lineup",
             "waiver",
-            "trade"
+            "trade",
+            "availability-alert"
           ]
         },
         {
@@ -1399,6 +1400,7 @@
             "waivers",
             "trades",
             "weekly-report",
+            "inactive-sweep",
             "full",
             "notification"
           ]
@@ -2046,4 +2048,3 @@
     }
   ]
 }
-

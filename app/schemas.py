@@ -8,6 +8,25 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class AvailabilitySignal(BaseModel):
+    """Provider-neutral availability evidence attached to a normalized player."""
+
+    source: str = Field(min_length=1, max_length=40)
+    week: int = Field(ge=0, le=30)
+    practice_status: str | None = Field(default=None, max_length=80)
+    game_status: str | None = Field(default=None, max_length=40)
+    primary_injury: str | None = Field(default=None, max_length=120)
+    confirmed_inactive: bool | None = None
+
+    @field_validator("source", "practice_status", "game_status", "primary_injury")
+    @classmethod
+    def clean_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.replace("\x00", "").split())
+        return cleaned or None
+
+
 class Player(BaseModel):
     id: str
     name: str
@@ -21,6 +40,7 @@ class Player(BaseModel):
     eligible_slots: list[str] = Field(default_factory=list)
     opponent: str = ""
     percent_owned: float = 0.0
+    availability: AvailabilitySignal | None = None
 
     @field_validator("name", "position", "pro_team", "injury_status", "current_slot")
     @classmethod
@@ -38,6 +58,11 @@ class Team(BaseModel):
     points_for: float = 0.0
     projected_total: float = 0.0
     roster: list[Player] = Field(default_factory=list)
+
+    @field_validator("name", "owner")
+    @classmethod
+    def bound_text(cls, value: str) -> str:
+        return " ".join(value.replace("\x00", "").split())[:160]
 
 
 class Matchup(BaseModel):
@@ -61,6 +86,7 @@ class LeagueSnapshot(BaseModel):
     teams: list[Team]
     free_agents: list[Player] = Field(default_factory=list)
     matchups: list[Matchup] = Field(default_factory=list)
+    data_quality_warnings: list[str] = Field(default_factory=list)
     fetched_at: datetime
 
     @property
@@ -177,5 +203,7 @@ class ActivityEventView(BaseModel):
 
 
 class JobRunRequest(BaseModel):
-    kind: Literal["lineup", "waivers", "trades", "weekly-report", "full"]
+    kind: Literal[
+        "lineup", "waivers", "trades", "weekly-report", "inactive-sweep", "full"
+    ]
     notify: bool = True

@@ -3,7 +3,11 @@ from __future__ import annotations
 from app.config import Settings
 from app.demo import demo_snapshot
 from app.services.ai import Narrator, RulesNarrator
-from app.services.reports import build_configured_weekly_report, build_weekly_report_resilient
+from app.services.reports import (
+    build_configured_weekly_report,
+    build_report_facts,
+    build_weekly_report_resilient,
+)
 
 
 class FailingNarrator(Narrator):
@@ -49,3 +53,15 @@ def test_misconfigured_optional_ai_uses_rules_fallback() -> None:
     assert mode == "rules-fallback"
     assert facts["narration_fallback"] is True
     assert "Week 6" in body
+
+
+def test_report_facts_only_call_an_upset_when_a_lower_projection_wins() -> None:
+    snapshot = demo_snapshot(2026)
+    matchup = snapshot.matchups[0]
+    matchup.home_score = 101
+    matchup.away_score = 110
+
+    facts = build_report_facts(snapshot)
+
+    assert "Northside Noise beat Fourth & Founders" in str(facts["biggest_upset"])
+    assert "5.2 projected points behind" in str(facts["biggest_upset"])
