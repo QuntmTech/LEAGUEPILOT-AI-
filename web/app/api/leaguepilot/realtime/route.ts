@@ -49,11 +49,44 @@ export async function GET(request: Request) {
   const reader = upstream.body.getReader();
   let registered = false;
   let buffer = "";
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  /**
+   * Release the upstream connection exactly once. Without this an abandoned browser
+   * tab would leave a PocketBase stream open per reload, and those accumulate.
+   */
+  const release = (reason: string) => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) clearInterval(heartbeat);
+    reader.cancel(reason).catch(() => {});
+  };
+
+  // If the browser disconnects, tear down the upstream leg too.
+  request.signal.addEventListener("abort", () => release("client disconnected"));
 
   const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // SSE comment frames keep intermediaries (Apache, CDNs) from closing an idle
+      // stream, and surface a dead connection to the client promptly.
+      heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          release("heartbeat failed");
+        }
+      }, 25_000);
+    },
     async pull(controller) {
+      if (closed) {
+        controller.close();
+        return;
+      }
       const { done, value } = await reader.read();
       if (done) {
+        release("upstream ended");
         controller.close();
         return;
       }
@@ -80,7 +113,7 @@ export async function GET(request: Request) {
       controller.enqueue(encoder.encode(chunk));
     },
     cancel(reason) {
-      reader.cancel(reason).catch(() => {});
+      release(String(reason ?? "cancelled"));
     },
   });
 

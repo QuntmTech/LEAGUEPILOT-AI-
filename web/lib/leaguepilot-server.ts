@@ -55,11 +55,32 @@ export function isRecordId(value: string): boolean {
  * reintroduce that bug. `id` is random, not time-ordered, so it is never a recency proxy.
  */
 export const READABLE_COLLECTIONS = {
-  recommendations: "-confidence",
-  reports: "-published_at",
-  job_runs: "-scheduled_for",
-  league_snapshots: "",
-  espn_connections: "-last_synced_at",
+  recommendations: {
+    sort: "-confidence",
+    fields:
+      "id,workspace,kind,title,summary,confidence,impact_points,payload,status,expires_at,reviewed_at",
+  },
+  reports: {
+    sort: "-published_at",
+    fields: "id,workspace,week,title,body_markdown,metrics,narration_mode,published_at",
+  },
+  job_runs: {
+    // lease_token_hash, worker_id and raw result are deliberately excluded — operational
+    // internals must never reach the browser.
+    sort: "-scheduled_for",
+    fields:
+      "id,workspace,connection,kind,status,attempts,max_attempts,scheduled_for,started_at,completed_at,last_error",
+  },
+  league_snapshots: {
+    // No recency field exists on this collection, so no sort is applied.
+    sort: "",
+    fields: "id,workspace,connection,season,week,captured_at",
+  },
+  espn_connections: {
+    // Credential ciphertext columns are never listed, so they cannot be returned.
+    sort: "-last_synced_at",
+    fields: "id,workspace,league_id,season,label,visibility,status,last_synced_at,last_error",
+  },
 } as const;
 
 export type ReadableCollection = keyof typeof READABLE_COLLECTIONS;

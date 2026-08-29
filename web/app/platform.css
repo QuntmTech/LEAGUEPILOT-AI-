@@ -308,3 +308,36 @@
 @media (prefers-reduced-motion:reduce) {
   .lp-view,.lp-spin { animation:none; }
 }
+
+/* ---- Global league context bar -------------------------------------------------
+   Lives in platform.css (not globals.css) so it stays isolated from the public
+   homepage, per the handoff's stylesheet separation rule. Every selector is lp-*. */
+.lp-context-bar { display:flex; flex-wrap:wrap; align-items:center; gap:22px; padding:14px 20px; border-bottom:1px solid var(--lp-line); background:var(--lp-card); }
+.lp-context-bar small { display:block; color:var(--lp-muted); font-size:8px; font-weight:900; letter-spacing:.12em; }
+.lp-context-bar b { display:flex; align-items:center; gap:5px; font-size:13px; }
+.lp-context-identity,.lp-context-league { min-width:0; }
+.lp-context-league .lp-league-select { min-width:190px; height:32px; margin-top:2px; }
+.lp-context-facts { display:flex; flex-wrap:wrap; gap:22px; margin-left:8px; }
+.lp-context-facts>span { min-width:0; }
+.lp-context-actions { display:flex; gap:9px; margin-left:auto; }
+.lp-context-muted { color:var(--lp-muted); font-weight:600; }
+.lp-ok { color:var(--lp-green); }
+.lp-bad { color:#b75042; }
+.lp-bad svg,.lp-context-error svg { width:13px; }
+.lp-context-error { flex-basis:100%; display:flex; align-items:center; gap:7px; margin:0; color:#66531a; font-size:11px; }
+.lp-spin { animation:lp-spin 1s linear infinite; }
+@keyframes lp-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .lp-spin { animation:none; } }
+
+@media (max-width:1100px) {
+  .lp-context-facts { gap:16px; }
+  .lp-context-actions { margin-left:0; flex-basis:100%; }
+}
+@media (max-width:767px) {
+  /* Stack into two readable columns rather than a cramped single row. */
+  .lp-context-bar { gap:14px; padding:12px 14px; }
+  .lp-context-facts { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-left:0; flex-basis:100%; }
+  .lp-context-league { flex-basis:100%; }
+  .lp-context-league .lp-league-select { width:100%; }
+  .lp-context-actions>button { flex:1; min-height:44px; }
+}

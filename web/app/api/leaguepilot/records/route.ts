@@ -45,9 +45,12 @@ export async function GET(request: Request) {
   const query = new URLSearchParams({ perPage: String(perPage) });
   if (filters.length) query.set("filter", filters.join(" && "));
 
-  // Sort is pinned per collection — see READABLE_COLLECTIONS. Never caller-supplied.
-  const sort = READABLE_COLLECTIONS[collection];
+  // Sort AND field list are pinned per collection — see READABLE_COLLECTIONS. Neither is
+  // ever caller-supplied, so the browser cannot request an unlisted column (credential
+  // ciphertext, lease tokens) or a sort expression the collection does not support.
+  const { sort, fields } = READABLE_COLLECTIONS[collection];
   if (sort) query.set("sort", sort);
+  query.set("fields", fields);
 
   const response = await backendFetch(
     `/api/collections/${collection}/records?${query.toString()}`,
