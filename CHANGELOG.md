@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-08-30
+
+- Added the authenticated FΛNTΛSY WΛRROOM MCP gateway using the official Python SDK and
+  Streamable HTTP transport at `/mcp`.
+- Added tenant-scoped league, snapshot, roster, matchup, draft-context, recommendation, report and
+  job-status tools with fixed safe field allowlists.
+- Added confirmed sync, analysis and recommendation-review tools while preserving the read-only
+  ESPN boundary and explicitly reporting that approvals execute no ESPN action.
+- Added PocketBase bearer-token verification, OAuth protected-resource metadata, DNS-rebinding
+  protection, container packaging and MCP transport/security regression tests.
+
 ## 0.4.0 — 2026-08-29
 
 - Added provider-neutral availability evidence and a zero-cost nflverse practice/game-status

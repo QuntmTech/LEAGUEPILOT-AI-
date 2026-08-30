@@ -7,7 +7,7 @@ delivery and a human approval ledger in one local-first application.
 > **Locked product name:** LEAGUEPILOT AI. Existing `FCC_` environment variables remain supported
 > so upgrading the earlier founder build does not invalidate configuration or secrets.
 
-## What works in v0.4.0
+## What works in v0.5.0
 
 - Connects public or private ESPN Fantasy Football leagues through an isolated read-only HTTPX
   adapter, without handing account cookies to a third-party service.
@@ -32,6 +32,8 @@ delivery and a human approval ledger in one local-first application.
 - Runs a hosted PocketBase control plane with per-user workspaces and default-deny internal writes.
 - Queues ESPN sync and analysis work through atomic leases, retries and dead-letter handling.
 - Scales stateless read-only ESPN workers horizontally without exposing credentials in result payloads.
+- Exposes the authenticated FΛNTΛSY WΛRROOM MCP gateway over Streamable HTTP with safe league,
+  roster, matchup, recommendation, report and job tools plus confirmed queue/review operations.
 
 ## Fastest local setup on macOS or Linux
 
@@ -91,6 +93,19 @@ leaguepilot-ai worker
 See [docs/CLOUDPOD_BACKEND.md](docs/CLOUDPOD_BACKEND.md) for the schema, routes, deployment flow,
 security boundaries and honest scale envelope.
 
+## FΛNTΛSY WΛRROOM MCP
+
+Run the private MCP gateway on port 8787:
+
+```bash
+leaguepilot-mcp
+```
+
+The authenticated Streamable HTTP endpoint is `/mcp`. The MCP reuses PocketBase tenant rules and
+never calls ESPN directly. Private bearer-token use is implemented; public one-click ChatGPT
+account linking still requires a real OAuth 2.1 issuer and deployment verification. See
+[docs/MCP_SERVER.md](docs/MCP_SERVER.md) for tools, security boundaries, testing and deployment.
+
 ## Validation
 
 ```bash
@@ -113,6 +128,8 @@ and [docs/CHATGPT_SITES_DASHBOARD_PROMPT.md](docs/CHATGPT_SITES_DASHBOARD_PROMPT
 ## Honest limitations
 
 - v0.4.0 is a hosted multi-tenant beta foundation, not an unrestricted public SaaS launch.
+- The MCP is private-client ready, but not ready for public plugin submission until OAuth 2.1
+  account linking and a stable public HTTPS deployment pass ChatGPT and MCP Inspector testing.
 - Authentication is founder-token-to-HTTP-only-session with single-instance throttling. Public
   launch needs verified email/OAuth, passwordless recovery, distributed rate limiting and
   transactional email.

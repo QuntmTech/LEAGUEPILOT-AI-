@@ -12,5 +12,19 @@ services:
       - command-center-data:/data
     restart: unless-stopped
 
+  fantasy-warroom-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "127.0.0.1:8787:8787"
+    env_file:
+      - .env
+    environment:
+      LEAGUEPILOT_MCP_HOST: 0.0.0.0
+      LEAGUEPILOT_MCP_PORT: 8787
+      LEAGUEPILOT_MCP_PUBLIC_URL: http://127.0.0.1:8787
+    restart: unless-stopped
+
 volumes:
   command-center-data:
