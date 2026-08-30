@@ -4,6 +4,7 @@ LEAGUEPILOT AI depends on open-source packages installed through `pyproject.toml
 package remains governed by its own license. Important direct dependencies include:
 
 - FastAPI — MIT License.
+- Model Context Protocol Python SDK (`mcp`) — MIT License.
 - SQLAlchemy — MIT License.
 - Pydantic and pydantic-settings — MIT License.
 - HTTPX — BSD-3-Clause License.

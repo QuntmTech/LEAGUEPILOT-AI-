@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "leaguepilot-ai"
-version = "0.4.0"
+version = "0.5.0"
 description = "LEAGUEPILOT AI — ESPN-first fantasy intelligence and league automation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,6 +14,7 @@ dependencies = [
   "cryptography>=50,<51",
   "fastapi==0.141.1",
   "httpx>=0.28,<1",
+  "mcp>=1.29,<2",
   "pydantic-settings>=2.10,<3",
   "python-dotenv>=1.1,<2",
   "sqlalchemy==2.0.52",
@@ -31,6 +32,7 @@ dev = [
 
 [project.scripts]
 leaguepilot-ai = "app.cli:main"
+leaguepilot-mcp = "app.mcp_gateway.cli:main"
 fantasy-command-center = "app.cli:main"
 
 [tool.hatch.build.targets.wheel]
