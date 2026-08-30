@@ -45,6 +45,8 @@ class CloudWorkerSettings(BaseSettings):
     cloudpod_worker_key: SecretStr | None = None
     cloudpod_worker_id: str = Field(default_factory=lambda: socket.gethostname()[:80])
     worker_poll_seconds: float = Field(default=3.0, ge=0.25, le=60.0)
+    # Written each drain-loop iteration; the container health check reads its mtime.
+    worker_liveness_path: str = "/tmp/leaguepilot-worker.heartbeat"  # noqa: S108
     worker_request_timeout_seconds: float = Field(default=30.0, ge=5.0, le=120.0)
     espn_timeout_seconds: float = Field(default=20.0, ge=5.0, le=60.0)
     availability_provider: Literal["none", "nflverse"] = "none"
@@ -203,6 +205,7 @@ def run_worker(settings: CloudWorkerSettings, *, once: bool = False) -> int:
         timeout_seconds=settings.worker_request_timeout_seconds,
     ) as backend:
         while True:
+            _touch_liveness(settings.worker_liveness_path)
             if time.monotonic() >= next_heartbeat:
                 backend.heartbeat(worker_id=settings.cloudpod_worker_id)
                 next_heartbeat = time.monotonic() + 30.0
@@ -247,6 +250,21 @@ def run_worker(settings: CloudWorkerSettings, *, once: bool = False) -> int:
             else:
                 if once:
                     return 0
+
+
+def _touch_liveness(path: str) -> None:
+    """Record that the drain loop is still cycling.
+
+    The container health check reads this file's mtime. It is written on every loop
+    iteration — not only when a job is claimed — so an idle worker still looks healthy
+    while a wedged one does not. Failures are swallowed: an unwritable temp path must
+    never take down a worker that is otherwise draining fine.
+    """
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(str(time.time()))
+    except OSError:  # pragma: no cover - liveness is best-effort
+        logger.debug("Could not write worker liveness file", extra={"path": path})
 
 
 def _positive_int(value: object, label: str) -> int:
