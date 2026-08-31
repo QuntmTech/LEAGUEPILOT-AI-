@@ -26,5 +26,33 @@ services:
       LEAGUEPILOT_MCP_PUBLIC_URL: http://127.0.0.1:8787
     restart: unless-stopped
 
+  # Persistent queue worker.
+  #
+  # Exists because GitHub Actions scheduling is best-effort: measured over 38 h of
+  # production history the */5 cron delivered 11 of an expected 457 runs (2.4%), with a
+  # mean gap of 3.81 h and a worst case of 5.87 h. Each run drains for ~228 s, so the
+  # queue sat unattended ~98% of the time. Deadline-sensitive work — the Sunday inactive
+  # sweep above all — cannot tolerate that: PocketBase enqueues the sweep on time, but a
+  # job created at 16:30 UTC could go unclaimed until after kickoff.
+  #
+  # This container closes that gap by staying alive and polling every 3 s.
+  leaguepilot-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    # No `ports`: outbound-only. The worker dials CloudPod and accepts no inbound traffic.
+    env_file:
+      - .env
+    environment:
+      FCC_CLOUDPOD_URL: https://leaguepilot-ai.cloudpod.pro
+      # FCC_CLOUDPOD_WORKER_KEY is intentionally absent here. It must come from the
+      # deployment secret store via env_file or the orchestrator — never committed,
+      # never inlined in this file.
+      FCC_CLOUDPOD_WORKER_ID: ${FCC_CLOUDPOD_WORKER_ID:-leaguepilot-worker-1}
+      FCC_WORKER_POLL_SECONDS: "3"
+      FCC_AVAILABILITY_PROVIDER: nflverse
+      FCC_AI_PROVIDER: rules
+    restart: unless-stopped
+
 volumes:
   command-center-data:
