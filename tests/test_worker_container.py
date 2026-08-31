@@ -112,6 +112,7 @@ def test_espn_errors_are_scrubbed_of_session_values() -> None:
     assert "[REDACTED]" in source
     assert "safe_message" in source
 
+
 def _healthcheck_body(dockerfile: str) -> str:
     match = re.search(r"HEALTHCHECK[\s\S]*?CMD (.*)", dockerfile)
     assert match, "worker image must define a health check"

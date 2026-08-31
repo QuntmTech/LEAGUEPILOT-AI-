@@ -76,8 +76,9 @@ overriding it moves writer and reader together — hardcoding the path in the ch
 silently mark an otherwise healthy container unhealthy forever. A regression test asserts
 both defaults stay in sync.
 
-The worker writes that file on every — including idle polls, so an idle worker stays healthy while a wedged one does
-not. The container is unhealthy if that file is older than 180 s, a window deliberately
+The worker writes that file on every iteration—including idle polls—so an idle worker
+stays healthy while a wedged one does not. The container is unhealthy if that file is
+older than 180 s, a window deliberately
 generous against a slow ESPN fetch or a long analysis so one slow job cannot flap the
 container.
 
