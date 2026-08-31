@@ -71,7 +71,12 @@ interval.
 
 `Dockerfile.worker` instead asserts liveness from the drain loop itself. The worker
 writes `FCC_WORKER_LIVENESS_PATH` (default `/tmp/leaguepilot-worker.heartbeat`) on every
-iteration — including idle polls, so an idle worker stays healthy while a wedged one does
+iteration. **The health check reads the same variable with the same default**, so
+overriding it moves writer and reader together — hardcoding the path in the check would
+silently mark an otherwise healthy container unhealthy forever. A regression test asserts
+both defaults stay in sync.
+
+The worker writes that file on every — including idle polls, so an idle worker stays healthy while a wedged one does
 not. The container is unhealthy if that file is older than 180 s, a window deliberately
 generous against a slow ESPN fetch or a long analysis so one slow job cannot flap the
 container.

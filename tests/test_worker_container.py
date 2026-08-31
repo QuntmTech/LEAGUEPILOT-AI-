@@ -111,3 +111,55 @@ def test_espn_errors_are_scrubbed_of_session_values() -> None:
     source = (ROOT / "app" / "services" / "espn.py").read_text(encoding="utf-8")
     assert "[REDACTED]" in source
     assert "safe_message" in source
+
+def _healthcheck_body(dockerfile: str) -> str:
+    match = re.search(r"HEALTHCHECK[\s\S]*?CMD (.*)", dockerfile)
+    assert match, "worker image must define a health check"
+    return match.group(1)
+
+
+def test_health_check_and_worker_resolve_the_same_liveness_path(
+    worker_dockerfile: str,
+) -> None:
+    """Regression: the health check must not hardcode a path the worker can override.
+
+    CloudWorkerSettings exposes worker_liveness_path via FCC_WORKER_LIVENESS_PATH. If the
+    health check hardcoded the default instead of reading that variable, overriding it
+    would send the worker's writes to one path while the check watched another — leaving
+    a perfectly healthy container permanently unhealthy.
+    """
+    from app.cloud_worker import CloudWorkerSettings
+
+    body = _healthcheck_body(worker_dockerfile)
+    assert "FCC_WORKER_LIVENESS_PATH" in body, (
+        "health check must read the configured path, not hardcode one"
+    )
+
+    # Both sides must fall back to the same default.
+    default_in_check = re.search(
+        r"FCC_WORKER_LIVENESS_PATH'\s*,\s*'([^']+)'", body
+    )
+    assert default_in_check, "health check must supply a default for the variable"
+    settings_default = CloudWorkerSettings.model_fields["worker_liveness_path"].default
+    assert default_in_check.group(1) == settings_default, (
+        f"default mismatch: Dockerfile {default_in_check.group(1)!r} "
+        f"vs settings {settings_default!r}"
+    )
+
+
+def test_overriding_the_liveness_variable_moves_the_worker_write(
+    tmp_path, monkeypatch
+) -> None:
+    """The env var must actually reach the setting the worker writes through."""
+    from app.cloud_worker import CloudWorkerSettings, _touch_liveness
+
+    target = tmp_path / "custom.heartbeat"
+    monkeypatch.setenv("FCC_WORKER_LIVENESS_PATH", str(target))
+    settings = CloudWorkerSettings(
+        cloudpod_url="https://example.invalid",
+        cloudpod_worker_key="x" * 32,
+    )
+    assert settings.worker_liveness_path == str(target)
+
+    _touch_liveness(settings.worker_liveness_path)
+    assert target.exists(), "worker must write to the overridden path"

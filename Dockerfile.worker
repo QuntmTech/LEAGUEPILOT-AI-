@@ -25,7 +25,10 @@ USER app
 #
 # The staleness window is deliberately generous relative to FCC_WORKER_POLL_SECONDS=3:
 # a single slow ESPN fetch or a long analysis must not flap the container.
+# The path is read from FCC_WORKER_LIVENESS_PATH with the same default the worker uses,
+# so overriding the variable moves both the writer and this reader together. Hardcoding
+# it here would silently mark the container unhealthy forever whenever it was overridden.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD python -c "import os,sys,time; p='/tmp/leaguepilot-worker.heartbeat'; sys.exit(0 if os.path.exists(p) and (time.time()-os.path.getmtime(p)) < 180 else 1)"
+  CMD python -c "import os,sys,time; p=os.environ.get('FCC_WORKER_LIVENESS_PATH','/tmp/leaguepilot-worker.heartbeat'); sys.exit(0 if os.path.exists(p) and (time.time()-os.path.getmtime(p)) < 180 else 1)"
 
 CMD ["leaguepilot-ai", "worker"]
