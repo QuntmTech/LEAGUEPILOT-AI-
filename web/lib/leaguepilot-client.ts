@@ -61,6 +61,111 @@ export type JobRun = {
   last_error?: string;
 };
 
+
+/** Normalized league data inside a snapshot payload. Shapes verified against production. */
+export type SnapshotTeam = {
+  id: number;
+  name: string;
+  owner?: string;
+  wins: number;
+  losses: number;
+  ties?: number;
+  points_for?: number;
+  projected_total?: number;
+  roster?: SnapshotPlayer[];
+};
+
+export type SnapshotPlayer = {
+  id?: string;
+  name?: string;
+  position?: string;
+  slot?: string;
+  team?: string;
+  status?: string;
+  projected_points?: number;
+};
+
+export type SnapshotMatchup = {
+  week: number;
+  home_team_id: number;
+  away_team_id: number;
+  home_score?: number;
+  away_score?: number;
+  home_projected?: number;
+  away_projected?: number;
+};
+
+export type SnapshotPayload = {
+  league_id?: number;
+  league_name?: string;
+  season?: string | number;
+  week?: number;
+  my_team_id?: number;
+  scoring_format?: string;
+  roster_slots?: string[];
+  teams?: SnapshotTeam[];
+  matchups?: SnapshotMatchup[];
+  free_agents?: SnapshotPlayer[];
+  data_quality_warnings?: string[];
+};
+
+export type LeagueSnapshot = {
+  id: string;
+  workspace: string;
+  connection?: string;
+  week?: number;
+  payload?: SnapshotPayload;
+  fetched_at?: string;
+  content_hash?: string;
+};
+
+/** Recommendation payloads differ by kind. Fields verified against production records. */
+export type LineupPayload = {
+  start_player?: string;
+  start_value?: number;
+  sit_player?: string;
+  sit_value?: number;
+  evidence_source?: string;
+  execution_capability?: string;
+  risk_flags?: string[];
+};
+
+export type WaiverPayload = {
+  add_player?: string;
+  add_value?: number;
+  drop_player?: string;
+  drop_value?: number;
+  suggested_faab_percent?: number;
+  evidence_source?: string;
+  execution_capability?: string;
+  risk_flags?: string[];
+};
+
+export type TradePayload = {
+  partner_team?: string;
+  partner_team_id?: number;
+  offer_player?: string;
+  target_player?: string;
+  fairness_score?: number;
+  mutual_fit_score?: number;
+  my_estimated_lineup_gain?: number;
+  partner_estimated_lineup_gain?: number;
+  copy_paste_pitch?: string;
+  evidence_source?: string;
+  execution_capability?: string;
+  risk_flags?: string[];
+};
+
+export type Report = {
+  id: string;
+  week?: number;
+  title?: string;
+  body_markdown?: string;
+  metrics?: Record<string, unknown>;
+  narration_mode?: string;
+  published_at?: string;
+};
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -121,13 +226,13 @@ export const leaguePilot = {
   recommendations: (workspace: string) =>
     list<Recommendation>("recommendations", { workspace, perPage: 100 }),
 
-  reports: (workspace: string) => list<Record<string, unknown>>("reports", { workspace, perPage: 50 }),
+  reports: (workspace: string) => list<Report>("reports", { workspace, perPage: 50 }),
 
   jobs: (workspace: string, connection?: string) =>
     list<JobRun>("job_runs", { workspace, connection, perPage: 25 }),
 
   snapshots: (workspace: string) =>
-    list<Record<string, unknown>>("league_snapshots", { workspace, perPage: 25 }),
+    list<LeagueSnapshot>("league_snapshots", { workspace, perPage: 10 }),
 
   /**
    * Records a human decision. The backend rejects anything not currently "proposed",

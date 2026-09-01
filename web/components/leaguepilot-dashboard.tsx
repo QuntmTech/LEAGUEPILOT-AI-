@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Activity, AlertTriangle, ArrowRight, Bell, BookOpen, Bot, CalendarDays, Check,
+  Activity, AlertTriangle, ArrowRight, Bell, Bot, CalendarDays, Check,
   ChevronDown, CircleAlert, Clock3, FileText, Gauge, ListChecks,
   Loader2, LogOut, Menu, Play, Radar, RefreshCw, SearchCheck,
   ShieldCheck, Sparkles, Trophy, UserRound, Users, XCircle,
@@ -25,6 +25,11 @@ import { Switch } from "@/components/ui/switch";
 import { Toaster } from "@/components/ui/sonner";
 import { LeagueContextBar } from "@/components/league-context-bar";
 import { ConnectEspnForm } from "@/components/connect-espn-form";
+import { useLeagueIntel } from "@/components/league-intel";
+import { RecommendationDetail } from "@/components/recommendation-detail";
+import {
+  DataQualityPanel, MatchupPanel, OpponentExplorer, PathToTopPanel, ReportsArchive, StandingsTable,
+} from "@/components/league-sections";
 import { NAV_SECTIONS, type SectionId } from "@/lib/leaguepilot-nav";
 import { useLeagueScope } from "@/lib/use-league-scope";
 
@@ -72,10 +77,6 @@ const obj = (value: unknown): Item => value && typeof value === "object" && !Arr
 const list = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item) => item && typeof item === "object") as Item[] : [];
 const text = (record: Item, keys: string[], fallback = "") => {
   for (const key of keys) if (typeof record[key] === "string" && String(record[key]).trim()) return String(record[key]);
-  return fallback;
-};
-const count = (record: Item, keys: string[], fallback = 0) => {
-  for (const key of keys) if (typeof record[key] === "number") return Number(record[key]);
   return fallback;
 };
 const dateLabel = (value: string) => {
@@ -154,6 +155,49 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
   const alertRecommendations = useMemo(
     () => scope.recommendations.filter((item) => item.kind === "availability-alert"),
     [scope.recommendations],
+  );
+  const lineupWaiver = useMemo(
+    () => scope.recommendations.filter((i) => i.kind === "lineup" || i.kind === "waiver"),
+    [scope.recommendations],
+  );
+  // Highest projected impact first — the ranking the Path to #1 panel presents.
+  const topMoves = useMemo(
+    () =>
+      [...scope.recommendations]
+        .filter((r) => r.status === "proposed")
+        .sort((a, b) => (b.impact_points ?? 0) - (a.impact_points ?? 0))
+        .slice(0, 3),
+    [scope.recommendations],
+  );
+  const intel = useLeagueIntel(scope.snapshot);
+  const [openRec, setOpenRec] = useState<import("@/lib/leaguepilot-client").Recommendation | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [explorerTeam, setExplorerTeam] = useState<number | null>(null);
+  const [openReport, setOpenReport] = useState<import("@/lib/leaguepilot-client").Report | null>(null);
+
+  const reviewRecommendation = useCallback(
+    async (decision: "approved" | "dismissed") => {
+      if (!openRec || reviewing) return;
+      setReviewing(true);
+      try {
+        const response = await fetch(`/api/leaguepilot/recommendations/${openRec.id}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.message || "We couldn't record that decision.");
+        // The backend never executes anything on ESPN; surface that in the confirmation.
+        toast.success(`Recorded as ${decision}. Nothing was changed on ESPN.`);
+        setOpenRec(null);
+        scope.refresh();
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : "We couldn't record that decision.");
+      } finally {
+        setReviewing(false);
+      }
+    },
+    [openRec, reviewing, scope],
   );
 
   const loadBootstrap = useCallback(async (quiet = false) => {
@@ -279,6 +323,14 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
           />
         )}
 
+        {active === "overview" && !previewMode && scope.status === "ready" && (
+          <section className="lp-view lp-view-intel">
+            <PathToTopPanel path={intel.path} topMoves={topMoves} onOpen={setOpenRec} />
+            <MatchupPanel matchup={intel.matchup} />
+            <DataQualityPanel warnings={intel.warnings} fetchedAt={intel.fetchedAt} />
+          </section>
+        )}
+
         {active === "overview" && <section className="lp-view">
           <div className="lp-view-heading"><div><p className="lp-app-kicker">WEEKLY COMMAND CENTER</p><h1>{leagueName}</h1><p>{workspaceName} · {season === "—" ? "Season not synchronized" : `${season} season`} · Week {week}</p></div><div className="lp-heading-actions"><Button variant="outline" onClick={() => loadBootstrap()} disabled={refreshing}><RefreshCw className={refreshing ? "lp-spin" : ""} /> Refresh</Button><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div></div>
           {!connected && <div className="lp-first-run"><div><span><Radar /></span><p className="lp-app-kicker">FIRST RUN</p><h2>Connect your ESPN league to activate the command center.</h2><p>Your account is ready. The dashboard stays honestly empty until the backend returns a synchronized league snapshot.</p></div><div className="lp-first-run-steps"><span className="done"><b>01</b><p><strong>Account created</strong><small>PocketBase authentication is active</small></p><Check /></span><span><b>02</b><p><strong>Connect ESPN</strong><small>Add your league below</small></p><Clock3 /></span><span><b>03</b><p><strong>Run first analysis</strong><small>Lineup, waivers, trades, and reports</small></p><Gauge /></span></div>
@@ -303,20 +355,31 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
           {data.warnings.length > 0 && <div className="lp-quality-warning"><AlertTriangle /><div><b>Data-quality warning</b><p>{data.warnings.join(" · ")}</p></div></div>}
         </section>}
 
-        {active === "league" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">MY LEAGUE</p><h1>{leagueName}</h1><p>Live league details from the shared PocketBase snapshot.</p></div></div>
-          {!connected ? <EmptyState icon={Trophy} title="No ESPN league connected" copy="Once the backend returns a league snapshot, this section will show real scoring settings, roster information, standings, and sync health." /> : <><div className="lp-league-hero"><div><span><Trophy /></span><div className="lp-league-title"><small>ACTIVE LEAGUE</small><h2>{leagueName}</h2><b>{season} season · Week {week}</b></div></div><div><span><small>TEAMS</small><b>{count(data.league, ["team_count", "teams"], list(data.league.teams).length) || "—"}</b></span><span><small>ROSTERED PLAYERS</small><b>{data.roster.length || "—"}</b></span><span><small>LAST SYNC</small><b>{dateLabel(lastSync)}</b></span></div></div><div className="lp-panel"><div className="lp-panel-head"><div><p className="lp-app-kicker">YOUR ROSTER</p><h2>Current synchronized players</h2></div></div>{data.roster.length ? <div className="lp-roster-grid">{data.roster.map((player, index) => <article key={text(player, ["id"], String(index))}><span>{text(player, ["position"], "—")}</span><p><b>{text(player, ["name", "full_name", "player_name"], "Unnamed player")}</b><small>{text(player, ["team", "pro_team"], "Team unavailable")}</small></p><em>{text(player, ["status"], "Active")}</em></article>)}</div> : <EmptyState icon={Users} title="Roster data has not arrived" copy="The connected backend has not returned roster records for this league." />}</div></>}
+        {active === "league" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">LEAGUE INTELLIGENCE</p><h1>{intel.leagueName || leagueName}</h1><p>Standings, power rankings and this week&apos;s matchup from the latest synchronized snapshot.</p></div></div>
+          {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /></div>
+            : scope.status === "no-connection" ? <EmptyState icon={Trophy} title="Connect a league first" copy="Standings come from a synchronized ESPN snapshot." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
+            : <><MatchupPanel matchup={intel.matchup} /><div className="lp-view-heading" style={{ marginTop: 22 }}><div><p className="lp-app-kicker">STANDINGS &amp; POWER RANKINGS</p><h2>{intel.ranked.length} teams{intel.week ? ` · week ${intel.week}` : ""}</h2></div></div><StandingsTable ranked={intel.ranked} /><DataQualityPanel warnings={intel.warnings} fetchedAt={intel.fetchedAt} /></>}
         </section>}
 
-        {active === "moves" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DECISION QUEUE</p><h1>Recommendations</h1><p>Review impact, confidence, evidence, and risks before deciding.</p></div><Button onClick={runAnalysis} disabled={!workspaceId || ["queued", "pending", "running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div>
-          {data.recommendations.length ? <div className="lp-recommendations-grid">{data.recommendations.map((rec, index) => <article key={text(rec, ["id"], String(index))}><div><span>0{index + 1}</span><Badge>{text(rec, ["kind", "type"], "Decision")}</Badge></div><h2>{text(rec, ["title", "headline", "recommendation"], "Review recommendation")}</h2><p>{text(rec, ["summary", "reason", "description"], "Evidence is available in the recommendation record.")}</p><div className="lp-rec-meta"><span><small>CONFIDENCE</small><b>{text(rec, ["confidence"], "Not supplied")}</b></span><span><small>EST. IMPACT</small><b>{text(rec, ["impact", "estimated_impact"], "Not supplied")}</b></span><span><small>RISK</small><b>{text(rec, ["risk", "risk_level"], "Not supplied")}</b></span></div><Button variant="outline" onClick={() => setSelectedRecommendation(rec)}><SearchCheck /> Review evidence</Button></article>)}</div> : <EmptyState icon={ListChecks} title="Your decision queue is empty" copy={connected ? "Run Full Analysis to build a fresh queue from the latest snapshot." : "Connect and synchronize an ESPN league before requesting analysis."} action={workspaceId && <Button onClick={runAnalysis}><Play /> Run Full Analysis</Button>} />}
+        {active === "moves" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DECISION QUEUE</p><h1>Moves</h1><p>Lineup and waiver actions ranked by projected impact. Review the evidence before deciding.</p></div><Button onClick={runAnalysis} disabled={!workspaceId || ["queued","pending","running"].includes(currentStatus.toLowerCase())}><Play /> Run Full Analysis</Button></div>
+          {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /></div>
+            : scope.status === "error" ? <EmptyState icon={CircleAlert} title="We couldn't load your moves" copy={scope.error ?? "The backend did not respond."} action={<Button variant="outline" onClick={scope.refresh}><RefreshCw /> Try again</Button>} />
+            : scope.status === "no-connection" ? <EmptyState icon={ListChecks} title="Connect a league first" copy="Lineup and waiver analysis needs a synchronized league." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
+            : lineupWaiver.length === 0 ? <EmptyState icon={ListChecks} title="No open moves" copy="Nothing needs your attention in this league right now. Run an analysis to refresh." action={<Button onClick={runAnalysis} disabled={!workspaceId}><Play /> Run analysis</Button>} />
+            : <div className="lp-recommendations-grid">{lineupWaiver.map((item) => <article key={item.id}><div><span>{item.kind.toUpperCase()}</span><Badge>{item.confidence}%</Badge></div><h2>{item.title}</h2><p>{item.summary}</p><Button variant="outline" onClick={() => setOpenRec(item)}>Review <ArrowRight /></Button></article>)}</div>}
         </section>}
 
-        {active === "trades" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">TRADE LAB</p><h1>Trade opportunities</h1><p>Realistic partners and pitches, generated from analysed opponent rosters.</p></div></div>
+        {active === "trades" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">TRADE LAB</p><h1>Trade opportunities</h1><p>Realistic partners scored on fairness and mutual fit, with a copyable pitch.</p></div></div>
           {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /><Skeleton className="lp-skeleton-card" /></div>
             : scope.status === "error" ? <EmptyState icon={CircleAlert} title="We couldn't load trades" copy={scope.error ?? "The backend did not respond."} action={<Button variant="outline" onClick={scope.refresh}><RefreshCw /> Try again</Button>} />
-            : scope.status === "no-connection" ? <EmptyState icon={Users} title="Connect a league first" copy="Trade Lab compares your roster against every other team in your league. Connect an ESPN league to begin." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
-            : tradeRecommendations.length === 0 ? <EmptyState icon={Users} title="No trade opportunities yet" copy="Trade analysis runs as part of a full analysis. Once it completes, realistic partners and copyable pitches appear here." action={<Button onClick={runAnalysis} disabled={!workspaceId}><Play /> Run analysis</Button>} />
-            : <div className="lp-recommendations-grid">{tradeRecommendations.map((item) => <article key={String(item.id)}><div><span>{String(item.kind ?? "trade").toUpperCase()}</span><Badge>{typeof item.confidence === "number" ? `${item.confidence}%` : "—"}</Badge></div><h2>{String(item.title ?? "Trade opportunity")}</h2><p>{String(item.summary ?? "")}</p><Button variant="outline" onClick={() => setSelectedRecommendation(item as Item)}>Review <ArrowRight /></Button></article>)}</div>}
+            : scope.status === "no-connection" ? <EmptyState icon={Users} title="Connect a league first" copy="Trade Lab compares your roster against every other team." action={<Button variant="outline" onClick={() => setActive("settings")}>Open settings <ArrowRight /></Button>} />
+            : <>
+              {tradeRecommendations.length === 0
+                ? <EmptyState icon={Users} title="No trade opportunities yet" copy="Trade analysis runs as part of a full analysis." action={<Button onClick={runAnalysis} disabled={!workspaceId}><Play /> Run analysis</Button>} />
+                : <div className="lp-recommendations-grid">{tradeRecommendations.map((item) => { const tp = (item.payload ?? {}) as Record<string, unknown>; return <article key={item.id}><div><span>{String(tp.partner_team ?? "TRADE").toUpperCase()}</span><Badge>{item.confidence}%</Badge></div><h2>{item.title}</h2><p>{item.summary}</p><Button variant="outline" onClick={() => setOpenRec(item)}>Review <ArrowRight /></Button></article>; })}</div>}
+              <div className="lp-view-heading" style={{ marginTop: 26 }}><div><p className="lp-app-kicker">OPPONENT EXPLORER</p><h2>Every roster in the league</h2><p>Inspect any team to find the fit behind a trade.</p></div></div>
+              <OpponentExplorer ranked={intel.ranked} selectedId={explorerTeam} onSelect={setExplorerTeam} />
+            </>}
         </section>}
 
         {active === "alerts" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">DEADLINE CENTER</p><h1>Alerts</h1><p>Availability risks and deadlines detected from real league data.</p></div></div>
@@ -327,8 +390,9 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
             : <div className="lp-recommendations-grid">{alertRecommendations.map((item) => <article key={String(item.id)}><div><span>ALERT</span><Badge>{typeof item.confidence === "number" ? `${item.confidence}%` : "—"}</Badge></div><h2>{String(item.title ?? "Availability alert")}</h2><p>{String(item.summary ?? "")}</p><Button variant="outline" onClick={() => setSelectedRecommendation(item as Item)}>Review <ArrowRight /></Button></article>)}</div>}
         </section>}
 
-        {active === "reports" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">LEAGUE INTELLIGENCE</p><h1>Reports</h1><p>Weekly recaps, power rankings, matchup stories, and commissioner-ready copy.</p></div></div>
-          {data.reports.length ? <div className="lp-reports-grid">{data.reports.map((report, index) => <article key={text(report, ["id"], String(index))}><div><span><FileText /></span><Badge>{text(report, ["status"], "Ready")}</Badge></div><p className="lp-app-kicker">{text(report, ["kind", "type"], "WEEKLY REPORT")}</p><h2>{text(report, ["title", "name"], "League report")}</h2><p>{text(report, ["summary", "excerpt"], "This report record does not include a summary.")}</p><footer><span><Clock3 /> {dateLabel(text(report, ["created", "created_at", "date"]))}</span><Button variant="outline">Open report <ArrowRight /></Button></footer></article>)}</div> : <EmptyState icon={BookOpen} title="No reports have been generated" copy="Reports will appear after a full analysis successfully completes." />}
+        {active === "reports" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">ARCHIVE</p><h1>Reports</h1><p>Weekly briefs generated from real league data.</p></div></div>
+          {scope.status === "loading" ? <div className="lp-skeleton-grid"><Skeleton className="lp-skeleton-card" /></div>
+            : <ReportsArchive reports={scope.reports} onOpen={(id) => { const r = scope.reports.find((x) => x.id === id); if (r) setOpenReport(r); }} />}
         </section>}
 
         {active === "activity" && <section className="lp-view"><div className="lp-view-heading"><div><p className="lp-app-kicker">LIVE OPERATIONS</p><h1>Activity</h1><p>Queued, running, succeeded, and failed jobs from the backend.</p></div><Button variant="outline" onClick={() => loadBootstrap()} disabled={refreshing}><RefreshCw className={refreshing ? "lp-spin" : ""} /> Refresh status</Button></div>
@@ -366,6 +430,26 @@ export function LeaguePilotDashboard({ previewMode = false }: { previewMode?: bo
     </SidebarInset>
 
     <Dialog open={Boolean(selectedRecommendation)} onOpenChange={(open) => !open && setSelectedRecommendation(null)}><DialogContent className="lp-evidence-dialog"><DialogHeader><Badge>RECOMMENDATION EVIDENCE</Badge><DialogTitle>{selectedRecommendation ? text(selectedRecommendation, ["title", "headline", "recommendation"], "Recommendation") : ""}</DialogTitle><DialogDescription>Read-only evidence from the current PocketBase record.</DialogDescription></DialogHeader>{selectedRecommendation && <div className="lp-evidence-content"><div className="lp-rec-meta"><span><small>CONFIDENCE</small><b>{text(selectedRecommendation, ["confidence"], "Not supplied")}</b></span><span><small>EST. IMPACT</small><b>{text(selectedRecommendation, ["impact", "estimated_impact"], "Not supplied")}</b></span><span><small>RISK</small><b>{text(selectedRecommendation, ["risk", "risk_level"], "Not supplied")}</b></span></div><section><h3>Why this is recommended</h3><p>{text(selectedRecommendation, ["reason", "summary", "description"], "The backend record did not supply an explanation.")}</p></section><section><h3>Evidence</h3><p>{text(selectedRecommendation, ["evidence", "evidence_summary"], "No evidence summary was supplied in this record.")}</p></section><p className="lp-settings-honesty"><ShieldCheck /> Review only. No ESPN action is submitted from this dialog.</p></div>}</DialogContent></Dialog>
+    {openRec && (
+      <Dialog open onOpenChange={(v) => { if (!v) setOpenRec(null); }}>
+        <DialogContent className="lp-rec-dialog">
+          <DialogHeader><DialogTitle className="sr-only">{openRec.title}</DialogTitle>
+            <DialogDescription className="sr-only">Recommendation detail and decision controls.</DialogDescription></DialogHeader>
+          <RecommendationDetail recommendation={openRec} reviewing={reviewing}
+            onReview={previewMode ? undefined : reviewRecommendation} />
+        </DialogContent>
+      </Dialog>
+    )}
+    {openReport && (
+      <Dialog open onOpenChange={(v) => { if (!v) setOpenReport(null); }}>
+        <DialogContent className="lp-report-dialog">
+          <DialogHeader><DialogTitle>{openReport.title || "Weekly brief"}</DialogTitle>
+            <DialogDescription>Week {openReport.week ?? "—"} · {openReport.narration_mode || "rules"}</DialogDescription></DialogHeader>
+          {/* Rendered as plain text, never as HTML: report bodies are untrusted content. */}
+          <pre className="lp-report-body">{openReport.body_markdown || "No content."}</pre>
+        </DialogContent>
+      </Dialog>
+    )}
     <Toaster position="top-right" richColors />
   </SidebarProvider>;
 }
