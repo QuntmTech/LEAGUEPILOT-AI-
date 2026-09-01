@@ -6,7 +6,9 @@ import {
   selectedConnection,
   type Connection,
   type JobRun,
+  type LeagueSnapshot,
   type Recommendation,
+  type Report,
 } from "@/lib/leaguepilot-client";
 import { connectRealtime } from "@/lib/leaguepilot-realtime";
 
@@ -20,7 +22,8 @@ export type LeagueScope = {
   connection: Connection | null;
   recommendations: Recommendation[];
   jobs: JobRun[];
-  reports: Record<string, unknown>[];
+  reports: Report[];
+  snapshot: LeagueSnapshot | null;
   latestJob: JobRun | null;
   selectConnection: (id: string) => void;
   refresh: () => void;
@@ -44,7 +47,8 @@ export function useLeagueScope(workspaceId: string | null): LeagueScope {
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [jobs, setJobs] = useState<JobRun[]>([]);
-  const [reports, setReports] = useState<Record<string, unknown>[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [snapshot, setSnapshot] = useState<LeagueSnapshot | null>(null);
   const [status, setStatus] = useState<ScopeStatus>("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +69,7 @@ export function useLeagueScope(workspaceId: string | null): LeagueScope {
     setRecommendations([]);
     setJobs([]);
     setReports([]);
+    setSnapshot(null);
   }, []);
 
   const load = useCallback(
@@ -77,16 +82,23 @@ export function useLeagueScope(workspaceId: string | null): LeagueScope {
       setStatus("loading");
       setError(null);
       try {
-        const [recs, jobRuns, reportRows] = await Promise.all([
+        const [recs, jobRuns, reportRows, snapshots] = await Promise.all([
           leaguePilot.recommendations(workspaceId),
           leaguePilot.jobs(workspaceId, targetConnection ?? undefined),
           leaguePilot.reports(workspaceId),
+          leaguePilot.snapshots(workspaceId),
         ]);
         // A newer switch has happened while this was in flight — drop the result.
         if (!mounted.current || mine !== generation.current) return;
         setRecommendations(recs);
         setJobs(jobRuns);
         setReports(reportRows);
+        // Newest first (sorted server-side by -fetched_at); scoped to the selected league.
+        setSnapshot(
+          snapshots.find((s) => !targetConnection || s.connection === targetConnection) ??
+            snapshots[0] ??
+            null,
+        );
         setStatus(targetConnection ? "ready" : "no-connection");
       } catch (cause) {
         if (!mounted.current || mine !== generation.current) return;
@@ -169,6 +181,7 @@ export function useLeagueScope(workspaceId: string | null): LeagueScope {
     recommendations,
     jobs,
     reports,
+    snapshot,
     latestJob,
     selectConnection,
     refresh,

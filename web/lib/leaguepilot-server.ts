@@ -72,9 +72,13 @@ export const READABLE_COLLECTIONS = {
       "id,workspace,connection,kind,status,attempts,max_attempts,scheduled_for,started_at,completed_at,last_error",
   },
   league_snapshots: {
-    // No recency field exists on this collection, so no sort is applied.
-    sort: "",
-    fields: "id,workspace,connection,season,week,captured_at",
+    // fetched_at is a real date field on this collection, so it is a valid sort — unlike
+    // `created`, which does not exist here. `payload` carries the normalized league data
+    // (teams, matchups, rosters, free agents) the dashboard renders; it holds no
+    // credentials, and credentials_ciphertext lives on espn_connections, not here.
+    sort: "-fetched_at",
+    fields:
+      "id,workspace,connection,week,payload,content_hash,schema_version,fetched_at,expires_at",
   },
   espn_connections: {
     // Matches the real schema. credentials_ciphertext is deliberately absent — it is also
