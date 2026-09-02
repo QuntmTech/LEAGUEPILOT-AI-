@@ -897,3 +897,90 @@ def test_metadata_freshness_window(client):
 
     record.metadata_fetched_at = now - dt.timedelta(seconds=METADATA_CACHE_SECONDS + 60)
     assert metadata_is_fresh(record) is False
+
+
+# ------------------------------------------------------ security review regressions
+
+
+def test_consent_form_limits_password_attempts(client):
+    """A pending request must not become an unlimited password oracle.
+
+    Registration is open, so anyone can obtain a client_id, reach the consent form and
+    guess credentials against any LEAGUEPILOT account. Re-rendering the form with the
+    same request_token on failure would allow unlimited attempts for the pending
+    request's whole lifetime, laundered through our server so that PocketBase sees them
+    all as coming from us.
+    """
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+
+    _, challenge = _pkce()
+    client_id = _register(client)
+    page = _authorize(client, client_id, challenge)
+    token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+
+    statuses = []
+    for _ in range(8):
+        response = client.post(
+            "/authorize",
+            data={"request_token": token, "decision": "allow",
+                  "email": "victim@example.com", "password": "guess"},
+            follow_redirects=False,
+        )
+        statuses.append(response.status_code)
+
+    assert 400 in statuses, "the request must be burned after repeated failures"
+    attempts = len([c for c in FakeAsyncClient.calls
+                    if c[0] == "POST" and c[1].endswith("auth-with-password")])
+    assert attempts < 8, f"all {attempts} guesses reached the identity backend"
+
+
+def test_a_correct_password_still_works_within_the_attempt_budget(client):
+    """The lockout must not break a user who simply mistyped once."""
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+    _, challenge = _pkce()
+    client_id = _register(client)
+    page = _authorize(client, client_id, challenge)
+    token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+
+    first = client.post(
+        "/authorize",
+        data={"request_token": token, "decision": "allow", "email": "a@b.test",
+              "password": "wrong"},
+        follow_redirects=False,
+    )
+    assert first.status_code == 401
+
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_ok()
+    retry = client.post(
+        "/authorize",
+        data={"request_token": token, "decision": "allow", "email": "a@b.test",
+              "password": "right"},
+        follow_redirects=False,
+    )
+    assert retry.status_code == 302
+    assert "code=" in retry.headers["location"]
+
+
+def test_pending_requests_are_capped(client):
+    """`_PENDING` is in-memory and only pruned by age, so an unauthenticated caller
+    could otherwise grow it without bound for the whole TTL window."""
+    _, challenge = _pkce()
+    client_id = _register(client)
+    for _ in range(server_mod._PENDING_MAX + 25):
+        _authorize(client, client_id, challenge)
+    assert len(server_mod._PENDING) <= server_mod._PENDING_MAX
+
+
+def test_consent_page_cannot_be_framed_or_cached(client):
+    _, challenge = _pkce()
+    client_id = _register(client)
+    page = _authorize(client, client_id, challenge)
+    assert page.headers.get("X-Frame-Options") == "DENY"
+    assert "frame-ancestors 'none'" in page.headers.get("Content-Security-Policy", "")
+    assert "no-store" in page.headers.get("Cache-Control", "")

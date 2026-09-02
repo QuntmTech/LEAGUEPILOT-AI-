@@ -30,6 +30,14 @@ SUPPORTED_SCOPES = {"leaguepilot:read", "leaguepilot:write"}
 # browser never carries tamperable OAuth parameters through the consent step.
 _PENDING: dict[str, dict] = {}
 _PENDING_TTL = dt.timedelta(minutes=10)
+# Anyone can register a client and then create pending requests, so the store needs a
+# ceiling as well as a TTL or it grows unbounded for the whole window. Oldest-first
+# eviction: a legitimate user completes consent in seconds.
+_PENDING_MAX = 512
+# Sign-in attempts allowed against one pending request before it is burned. Without this
+# the consent form is an unlimited password oracle against any LEAGUEPILOT account,
+# proxied through us so the identity backend sees every guess as our own traffic.
+_MAX_SIGNIN_ATTEMPTS = 5
 
 
 def _prune_pending() -> None:
@@ -37,6 +45,30 @@ def _prune_pending() -> None:
     for key, value in list(_PENDING.items()):
         if value["created"] + _PENDING_TTL < now:
             _PENDING.pop(key, None)
+
+
+def _remember_pending(request_token: str, value: dict) -> None:
+    """Store a pending request, evicting oldest-first so the cap holds after insertion."""
+    _PENDING[request_token] = value
+    while len(_PENDING) > _PENDING_MAX:
+        oldest = min(_PENDING, key=lambda k: _PENDING[k]["created"])
+        _PENDING.pop(oldest, None)
+
+
+# The consent screen collects a password, so it must never be framed and must never be
+# cached — the HTML carries the request_token that identifies the pending authorization.
+_PAGE_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
+    "form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+def _page(body: str, status: int = 200) -> HTMLResponse:
+    return HTMLResponse(body, status, headers=_PAGE_HEADERS)
 
 
 def _oauth_error(error: str, description: str, status: int = 400) -> JSONResponse:
@@ -184,18 +216,18 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         resource = params.get("resource", "")
 
         if params.get("response_type") != "code":
-            return HTMLResponse(
+            return _page(
                 pages.error_page("Only the authorization code flow is supported."), 400
             )
         try:
             client = await _resolve_client(client_id)
         except client_lib.ClientError as exc:
-            return HTMLResponse(pages.error_page(exc.description), 400)
+            return _page(pages.error_page(exc.description), 400)
 
         # Exact match. Anything else and we must not redirect, because an attacker-supplied
         # URI is exactly how codes get exfiltrated.
         if redirect_uri not in client.redirect_uri_list():
-            return HTMLResponse(
+            return _page(
                 pages.error_page("The redirect URI does not match this client's registration."),
                 400,
             )
@@ -216,7 +248,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
 
         _prune_pending()
         request_token = secrets.token_urlsafe(32)
-        _PENDING[request_token] = {
+        _remember_pending(request_token, {
             "client_id": client_id,
             "client_name": client.client_name,
             "redirect_uri": redirect_uri,
@@ -226,8 +258,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             "method": method,
             "resource": resolved.resource,
             "created": dt.datetime.now(dt.UTC),
-        }
-        return HTMLResponse(
+            "attempts": 0,
+        })
+        return _page(
             pages.login_page(
                 request_token=request_token,
                 client_name=client.client_name,
@@ -245,7 +278,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         _prune_pending()
         pending = _PENDING.get(request_token)
         if not pending:
-            return HTMLResponse(
+            return _page(
                 pages.error_page("This authorization request expired. Start again."), 400
             )
 
@@ -264,10 +297,23 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                     json={"identity": email, "password": password},
                 )
         except httpx.HTTPError:
-            return HTMLResponse(pages.error_page("The sign-in service is unavailable."), 502)
+            return _page(pages.error_page("The sign-in service is unavailable."), 502)
         if response.status_code != 200:
+            # Burn the pending request once the budget is spent, so the consent form
+            # cannot be reused as an unlimited password oracle. A user who simply
+            # mistyped still gets several tries.
+            pending["attempts"] += 1
+            if pending["attempts"] >= _MAX_SIGNIN_ATTEMPTS:
+                _PENDING.pop(request_token, None)
+                logger.warning("authorization request burned after repeated sign-in failures")
+                return _page(
+                    pages.error_page(
+                        "Too many failed sign-in attempts. Start again from the application."
+                    ),
+                    400,
+                )
             # Same message for unknown user and wrong password: no account enumeration.
-            return HTMLResponse(
+            return _page(
                 pages.login_page(
                     request_token=request_token,
                     client_name=pending["client_name"],
@@ -280,7 +326,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         subject = str(payload.get("record", {}).get("id") or "")
         upstream = str(payload.get("token") or "")
         if not subject or not upstream:
-            return HTMLResponse(
+            return _page(
                 pages.error_page("The sign-in service returned an unexpected response."), 502
             )
 
