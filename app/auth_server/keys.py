@@ -24,6 +24,11 @@ def _b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
+def as_utc(value: dt.datetime) -> dt.datetime:
+    """Treat a naive timestamp as UTC. SQLite drops tzinfo on round-trip."""
+    return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+
+
 def constant_time_equals(a: str, b: str) -> bool:
     """Timing-safe comparison for anything token-shaped."""
     return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
@@ -82,7 +87,7 @@ class KeyStore:
                 .order_by(SigningKey.created_at.desc())
                 .first()
             )
-            if key and key.retire_after > now:
+            if key and as_utc(key.retire_after) > now:
                 return key.kid, self.decrypt(key.private_pem_encrypted)
 
             if key:
@@ -118,16 +123,27 @@ class KeyStore:
             return kid, pem
 
     def public_jwks(self) -> dict:
-        """Every key still inside its retire window, so recently issued tokens verify."""
+        """Every key still inside its retire window, so recently issued tokens verify.
+
+        A key is created first: clients commonly fetch the JWKS while setting up a
+        connection, before any token exists, and an empty key set reads as a broken
+        authorization server.
+
+        Filtering happens in Python rather than SQL. SQLite stores naive datetimes, so
+        comparing them against a timezone-aware value serialises an offset that the
+        string comparison then mis-orders — which silently published an empty key set.
+        """
+        self.active_key()
         cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
         with self._sessions() as session:
-            rows = (
-                session.query(SigningKey)
-                .filter(SigningKey.retire_after > cutoff)
-                .order_by(SigningKey.created_at.desc())
-                .all()
-            )
-            return {"keys": [json.loads(r.public_jwk) for r in rows]}
+            rows = session.query(SigningKey).order_by(SigningKey.created_at.desc()).all()
+        return {
+            "keys": [
+                json.loads(row.public_jwk)
+                for row in rows
+                if as_utc(row.retire_after) > cutoff
+            ]
+        }
 
 
 def load_encryption_key() -> str:

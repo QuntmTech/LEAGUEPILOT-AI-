@@ -8,11 +8,13 @@ from urllib.parse import urlencode, urlsplit
 import httpx
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import Response
 
 from app.auth_server import clients as client_lib
 from app.auth_server import pages, tokens
 from app.auth_server.keys import (
     KeyStore,
+    as_utc,
     hash_token,
     load_encryption_key,
     new_secret,
@@ -45,7 +47,7 @@ def _oauth_error(error: str, description: str, status: int = 400) -> JSONRespons
 
 def _redirect_error(
     redirect_uri: str, error: str, description: str, state: str | None
-) -> RedirectResponse:
+) -> Response:
     params = {"error": error, "error_description": description}
     if state:
         params["state"] = state
@@ -171,8 +173,8 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                 return client
         raise client_lib.ClientError("invalid_client", "Unknown client.")
 
-    @app.get("/authorize")
-    async def authorize(request: Request) -> HTMLResponse | RedirectResponse | JSONResponse:
+    @app.get("/authorize", response_model=None)
+    async def authorize(request: Request) -> Response:
         params = request.query_params
         client_id = params.get("client_id", "")
         redirect_uri = params.get("redirect_uri", "")
@@ -233,13 +235,13 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             )
         )
 
-    @app.post("/authorize")
+    @app.post("/authorize", response_model=None)
     async def authorize_submit(
         request_token: str = Form(...),
         decision: str = Form(...),
         email: str = Form(default=""),
         password: str = Form(default=""),
-    ) -> HTMLResponse | RedirectResponse:
+    ) -> Response:
         _prune_pending()
         pending = _PENDING.get(request_token)
         if not pending:
@@ -342,7 +344,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                 logger.warning("authorization code replay detected; grants revoked")
                 return _oauth_error("invalid_grant", "The authorization code is invalid.")
 
-            if record.expires_at <= now:
+            if as_utc(record.expires_at) <= now:
                 return _oauth_error("invalid_grant", "The authorization code has expired.")
             if record.client_id != client_id:
                 return _oauth_error(
@@ -406,7 +408,8 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                 .first()
                 if presented else None
             )
-            if grant is None or grant.revoked_at is not None or grant.expires_at <= now:
+            if (grant is None or grant.revoked_at is not None
+                    or as_utc(grant.expires_at) <= now):
                 return _oauth_error("invalid_grant", "The refresh token is invalid.")
             if grant.client_id != client_id:
                 return _oauth_error(
@@ -468,8 +471,11 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         takes effect before the access token's own expiry."""
         with sessions() as session:
             grant = session.get(Grant, grant_id)
-            active = bool(grant and grant.revoked_at is None
-                          and grant.expires_at > dt.datetime.now(dt.UTC))
+            active = bool(
+                grant
+                and grant.revoked_at is None
+                and as_utc(grant.expires_at) > dt.datetime.now(dt.UTC)
+            )
             return JSONResponse({"active": active})
 
     return app

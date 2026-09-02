@@ -90,12 +90,11 @@ def test_codes_are_single_use_and_replay_revokes_grants() -> None:
     assert "replay" in src.lower()
 
 
-def test_codes_are_short_lived_and_bound_to_client_and_redirect() -> None:
-    src = _src("app/auth_server/server.py")
-    assert "record.expires_at <= now" in src
-    assert "record.client_id != client_id" in src
-    assert "record.redirect_uri != redirect_uri" in src
-
+def test_codes_are_short_lived() -> None:
+    """Expiry, client binding and redirect binding are asserted behaviorally in
+    test_auth_server_flow.py (test_expired_code_is_rejected,
+    test_code_bound_to_issuing_client, test_token_rejects_mismatched_redirect_uri).
+    Only the configured TTL is a pure config invariant with no HTTP surface."""
     from app.auth_server.settings import AuthServerSettings
 
     field = AuthServerSettings.model_fields["authorization_code_ttl_seconds"]

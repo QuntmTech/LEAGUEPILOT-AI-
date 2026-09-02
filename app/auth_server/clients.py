@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.auth_server.keys import as_utc
 from app.auth_server.models import OAuthClient
 
 # Metadata documents are cached this long before re-fetch. Short enough that a client can
@@ -155,5 +156,8 @@ def upsert_url_client(
 def metadata_is_fresh(client: OAuthClient) -> bool:
     if not client.metadata_fetched_at:
         return False
-    age = dt.datetime.now(dt.UTC) - client.metadata_fetched_at
+    # SQLite drops tzinfo on round-trip, so a stored timestamp comes back naive while
+    # `now` is aware. Subtracting the two raises TypeError, which crashed every authorize
+    # after the first for any Client ID Metadata Document client.
+    age = dt.datetime.now(dt.UTC) - as_utc(client.metadata_fetched_at)
     return age.total_seconds() < METADATA_CACHE_SECONDS
