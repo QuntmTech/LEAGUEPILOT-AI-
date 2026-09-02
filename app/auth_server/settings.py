@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import AnyHttpUrl, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +42,13 @@ class AuthServerSettings(BaseSettings):
     # one extra period so tokens issued just before a rotation still verify.
     signing_key_ttl_seconds: int = Field(default=2_592_000, ge=86_400)
 
+    # Shared secret the MCP gateway presents to /introspect. Required: the endpoint
+    # reveals whether a grant is live, and without a credential it would be protected
+    # only by the unguessability of a grant id. A SecretStr keeps it out of reprs,
+    # tracebacks and log lines. It is its own credential - never the Claude Code bearer,
+    # the worker key, a signing key or a PocketBase administrator password.
+    introspection_secret: SecretStr = Field(min_length=32)
+
     request_timeout_seconds: float = Field(default=20.0, ge=3.0, le=60.0)
     log_level: str = "INFO"
 
@@ -57,3 +64,7 @@ class AuthServerSettings(BaseSettings):
     @property
     def backend_url(self) -> str:
         return str(self.cloudpod_url).rstrip("/")
+
+    @property
+    def introspection_token(self) -> str:
+        return self.introspection_secret.get_secret_value()

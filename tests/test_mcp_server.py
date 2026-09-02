@@ -9,7 +9,7 @@ from mcp.server.auth.provider import AccessToken
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.mcp_gateway.client import CloudPodClient
-from app.mcp_gateway.server import SERVER_INSTRUCTIONS, create_mcp_server
+from app.mcp_gateway.server import SERVER_INSTRUCTIONS, build_http_app, create_mcp_server
 from app.mcp_gateway.settings import McpSettings
 
 
@@ -72,7 +72,7 @@ async def test_server_advertises_focused_tools_and_safety_metadata() -> None:
 
 def test_streamable_http_rejects_missing_token_and_publishes_resource_metadata() -> None:
     server = create_mcp_server(settings(), token_verifier=StaticVerifier())
-    app = server.streamable_http_app()
+    app = build_http_app(server, settings())
     request = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -157,7 +157,7 @@ def test_authenticated_streamable_http_tool_call_reaches_safe_backend_client() -
         "method": "tools/call",
         "params": {"name": "leaguepilot_health", "arguments": {}},
     }
-    with TestClient(server.streamable_http_app()) as client:
+    with TestClient(build_http_app(server, settings())) as client:
         assert client.post("/mcp", json=initialize, headers=headers).status_code == 200
         response = client.post("/mcp", json=call, headers=headers)
 

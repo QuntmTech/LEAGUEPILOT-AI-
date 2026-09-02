@@ -17,6 +17,8 @@ def test_main_builds_the_app_and_serves_it_behind_a_trusted_proxy(monkeypatch, t
     monkeypatch.setenv("LEAGUEPILOT_AUTH_DATABASE_URL", f"sqlite:///{tmp_path/'cli.db'}")
     monkeypatch.setenv("LEAGUEPILOT_AUTH_HOST", "127.0.0.1")
     monkeypatch.setenv("LEAGUEPILOT_AUTH_PORT", "9443")
+    monkeypatch.setenv("LEAGUEPILOT_AUTH_INTROSPECTION_SECRET",
+                       "cli-test-introspection-secret-0123456789")
 
     captured = {}
 
@@ -46,10 +48,29 @@ def test_missing_encryption_key_fails_fast_rather_than_serving(monkeypatch, tmp_
     """Better a refused start than a server that silently invalidates every grant."""
     monkeypatch.delenv("LEAGUEPILOT_AUTH_ENCRYPTION_KEY", raising=False)
     monkeypatch.setenv("LEAGUEPILOT_AUTH_DATABASE_URL", f"sqlite:///{tmp_path/'cli2.db'}")
+    monkeypatch.setenv("LEAGUEPILOT_AUTH_INTROSPECTION_SECRET",
+                       "cli-test-introspection-secret-0123456789")
 
     def _must_not_run(*args, **kwargs):
         raise AssertionError("uvicorn.run must not be reached without an encryption key")
 
     monkeypatch.setattr(cli.uvicorn, "run", _must_not_run)
     with pytest.raises(RuntimeError, match="LEAGUEPILOT_AUTH_ENCRYPTION_KEY"):
+        cli.main()
+
+
+def test_missing_introspection_secret_fails_fast_rather_than_serving(monkeypatch, tmp_path):
+    """Introspection guards revocation. Starting without its credential would leave the
+    gateway unable to confirm any grant, so refuse at startup rather than at runtime."""
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("LEAGUEPILOT_AUTH_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("LEAGUEPILOT_AUTH_DATABASE_URL", f"sqlite:///{tmp_path/'cli3.db'}")
+    monkeypatch.delenv("LEAGUEPILOT_AUTH_INTROSPECTION_SECRET", raising=False)
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("uvicorn.run must not be reached without a service credential")
+
+    monkeypatch.setattr(cli.uvicorn, "run", _must_not_run)
+    with pytest.raises(ValidationError):
         cli.main()

@@ -196,7 +196,10 @@ def test_revocation_is_supported_and_enforced_before_token_expiry() -> None:
     assert "grant.revoked_at = now" in server
     composite = _src("app/mcp_gateway/composite_auth.py")
     assert "_grant_is_active" in composite
-    assert "Fail closed" in composite
+    # Fail-closed behaviour is asserted behaviourally in test_composite_auth.py
+    # (missing, invalid and unreachable introspection all deny the token), which is a
+    # stronger guarantee than matching a comment.
+    assert "Fails closed" in composite
 
 
 def test_refresh_tokens_rotate_on_use() -> None:

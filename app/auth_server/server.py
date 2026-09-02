@@ -15,6 +15,7 @@ from app.auth_server import pages, tokens
 from app.auth_server.keys import (
     KeyStore,
     as_utc,
+    constant_time_equals,
     hash_token,
     load_encryption_key,
     new_secret,
@@ -22,6 +23,13 @@ from app.auth_server.keys import (
 )
 from app.auth_server.models import AuthorizationCode, Grant, OAuthClient, build_session_factory
 from app.auth_server.settings import AuthServerSettings
+from app.auth_server.throttle import (
+    IDENTIFIER_LIMIT,
+    NETWORK_LIMIT,
+    FailureThrottle,
+    normalize_identifier,
+    normalize_network,
+)
 
 logger = logging.getLogger("leaguepilot.auth")
 
@@ -38,6 +46,13 @@ _PENDING_MAX = 512
 # the consent form is an unlimited password oracle against any LEAGUEPILOT account,
 # proxied through us so the identity backend sees every guess as our own traffic.
 _MAX_SIGNIN_ATTEMPTS = 5
+
+# Burning one pending request is not enough on its own: an attacker can simply register
+# another client, start another authorization request and collect a fresh five. These
+# budgets sit outside any single request, keyed by who is being guessed at and by where
+# the guesses come from, so new clients and new requests do not reset them.
+_IDENTIFIER_THROTTLE = FailureThrottle(limit=IDENTIFIER_LIMIT)
+_NETWORK_THROTTLE = FailureThrottle(limit=NETWORK_LIMIT)
 
 
 def _prune_pending() -> None:
@@ -270,6 +285,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
 
     @app.post("/authorize", response_model=None)
     async def authorize_submit(
+        request: Request,
         request_token: str = Form(...),
         decision: str = Form(...),
         email: str = Form(default=""),
@@ -288,6 +304,25 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             _PENDING.pop(request_token, None)
             return _redirect_error(redirect_uri, "access_denied", "The user cancelled.", state)
 
+        identifier_key = normalize_identifier(email)
+        network_key = normalize_network(request.client.host if request.client else None)
+        if not _IDENTIFIER_THROTTLE.allows(identifier_key) or not _NETWORK_THROTTLE.allows(
+            network_key
+        ):
+            # Same wording whether the account exists or not, and whether it was the
+            # identifier or the network budget that ran out: neither fact is the
+            # caller's to learn. Window-based, so it clears itself rather than
+            # becoming a lockout an attacker could hold over someone's account.
+            _PENDING.pop(request_token, None)
+            logger.warning("sign-in throttled")
+            return _page(
+                pages.error_page(
+                    "Too many sign-in attempts. Wait a few minutes, then start again "
+                    "from the application."
+                ),
+                429,
+            )
+
         # Authenticate against the existing LeaguePilot identity. ESPN credentials are
         # never requested or accepted here.
         try:
@@ -302,6 +337,8 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             # Burn the pending request once the budget is spent, so the consent form
             # cannot be reused as an unlimited password oracle. A user who simply
             # mistyped still gets several tries.
+            _IDENTIFIER_THROTTLE.record_failure(identifier_key)
+            _NETWORK_THROTTLE.record_failure(network_key)
             pending["attempts"] += 1
             if pending["attempts"] >= _MAX_SIGNIN_ATTEMPTS:
                 _PENDING.pop(request_token, None)
@@ -329,6 +366,11 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             return _page(
                 pages.error_page("The sign-in service returned an unexpected response."), 502
             )
+
+        # Clear only the identifier budget. Leaving the network budget in place means one
+        # account the attacker legitimately controls cannot be used to wipe the record of
+        # their guessing against everyone else.
+        _IDENTIFIER_THROTTLE.clear(identifier_key)
 
         _PENDING.pop(request_token, None)
         code = new_secret(32)
@@ -512,9 +554,25 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         return JSONResponse({}, status_code=200)
 
     @app.get("/introspect/grant/{grant_id}")
-    async def grant_state(grant_id: str) -> JSONResponse:
+    async def grant_state(request: Request, grant_id: str) -> JSONResponse:
         """Internal: lets the MCP confirm a token's grant is still live, so revocation
-        takes effect before the access token's own expiry."""
+        takes effect before the access token's own expiry.
+
+        Authenticated with a dedicated service credential, not left to the unguessability
+        of a grant id. It answers identically for an unknown and an unauthenticated
+        caller so it cannot be used to probe which grants exist, and the comparison is
+        constant-time.
+        """
+        header = request.headers.get("authorization", "")
+        presented = header[7:] if header[:7].lower() == "bearer " else ""
+        if not presented or not constant_time_equals(presented, resolved.introspection_token):
+            # 401 with no detail. Never echo the presented value.
+            logger.warning("unauthenticated grant introspection attempt")
+            return JSONResponse(
+                {"error": "invalid_token"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         with sessions() as session:
             grant = session.get(Grant, grant_id)
             active = bool(

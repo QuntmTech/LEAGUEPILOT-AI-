@@ -26,11 +26,18 @@ class CompositeTokenVerifier(TokenVerifier):
         cloudpod_url: str,
         issuer_url: str,
         resource_url: str,
+        internal_auth_url: str | None = None,
+        introspection_secret: str | None = None,
         timeout_seconds: float = 20.0,
     ) -> None:
         self._fallback = PocketBaseTokenVerifier(cloudpod_url, timeout_seconds=timeout_seconds)
+        # `_issuer` is the public identity we validate the `iss` claim against and must
+        # not change. `_internal` is where we actually send JWKS and introspection
+        # requests, so those stay on the private network and never depend on public DNS.
         self._issuer = issuer_url.rstrip("/")
+        self._internal = (internal_auth_url or issuer_url).rstrip("/")
         self._resource = resource_url.rstrip("/")
+        self._introspection_secret = introspection_secret
         self._timeout = timeout_seconds
         self._jwks: dict | None = None
 
@@ -39,7 +46,7 @@ class CompositeTokenVerifier(TokenVerifier):
             return self._jwks
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as http:
-                response = await http.get(f"{self._issuer}/.well-known/jwks.json")
+                response = await http.get(f"{self._internal}/.well-known/jwks.json")
             if response.status_code != 200:
                 return None
             self._jwks = response.json()
@@ -48,15 +55,27 @@ class CompositeTokenVerifier(TokenVerifier):
             return None
 
     async def _grant_is_active(self, grant_id: str) -> bool:
-        """Revocation must take effect before the access token's own expiry."""
-        if not grant_id:
+        """Revocation must take effect before the access token's own expiry.
+
+        Fails closed at every step. A missing service credential, a rejected one, an
+        unreachable authorization server or a malformed reply all mean the grant cannot
+        be confirmed live, and an unconfirmable grant is treated as revoked. That
+        deliberately makes an introspection outage deny OAuth tokens rather than admit
+        revoked ones; PocketBase bearers are unaffected and keep working.
+        """
+        if not grant_id or not self._introspection_secret:
             return False
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as http:
-                response = await http.get(f"{self._issuer}/introspect/grant/{grant_id}")
-            return response.status_code == 200 and bool(response.json().get("active"))
+                response = await http.get(
+                    f"{self._internal}/introspect/grant/{grant_id}",
+                    headers={"Authorization": f"Bearer {self._introspection_secret}"},
+                )
+            if response.status_code != 200:
+                return False
+            return bool(response.json().get("active"))
         except Exception:
-            # Fail closed: an unverifiable grant is treated as revoked.
+            # Never let the reason surface: it could name an internal host or credential.
             return False
 
     async def verify_token(self, token: str) -> AccessToken | None:

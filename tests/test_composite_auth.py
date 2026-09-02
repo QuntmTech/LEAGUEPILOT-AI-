@@ -39,6 +39,7 @@ from tests.test_auth_server_flow import (
 ISSUER = "https://auth.test.invalid"
 RESOURCE = "https://mcp.test.invalid"
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
+INTROSPECTION_SECRET = "test-introspection-secret-value-0123456789"
 STATIC_BEARER = "existing-claude-code-pocketbase-bearer"
 PB_USER = "user0000000001x"
 
@@ -70,7 +71,8 @@ def auth(tmp_path, monkeypatch):
             resource_url=f"{RESOURCE}/",
             cloudpod_url="https://pb.test.invalid",
             database_url=f"sqlite:///{tmp_path/'auth.db'}",
-            authorization_code_ttl_seconds=60,
+            introspection_secret=INTROSPECTION_SECRET,
+        authorization_code_ttl_seconds=60,
             access_token_ttl_seconds=300,
         )
     )
@@ -99,7 +101,9 @@ class _ForwardingClient(FakeAsyncClient):
             _ForwardingClient.seen.append(url)
             if _ForwardingClient.offline:
                 raise ConnectionError("authorization server unreachable")
-            return _ForwardingClient.target.get(url[len(ISSUER):])
+            return _ForwardingClient.target.get(
+                url[len(ISSUER):], headers=kwargs.get("headers") or {}
+            )
         return await super().get(url, **kwargs)
 
 
@@ -134,6 +138,7 @@ def verifier(auth, monkeypatch):
         cloudpod_url="https://pb.test.invalid",
         issuer_url=ISSUER,
         resource_url=RESOURCE,
+        introspection_secret=INTROSPECTION_SECRET,
     )
     v._fallback = _FakeFallback()
     return v
@@ -279,6 +284,7 @@ async def test_token_for_a_different_audience_is_rejected(verifier, auth, monkey
         cloudpod_url="https://pb.test.invalid",
         issuer_url=ISSUER,
         resource_url="https://someone-elses-mcp.invalid",
+        introspection_secret=INTROSPECTION_SECRET,
     )
     other._fallback = _FakeFallback()
     assert await other.verify_token(body["access_token"]) is None
@@ -297,3 +303,126 @@ async def test_missing_jwks_degrades_to_pocketbase_rather_than_erroring(verifier
     _ForwardingClient.offline = True
     assert await verifier.verify_token("some-pocketbase-looking-token") is None
     assert verifier._fallback.calls == ["some-pocketbase-looking-token"]
+
+
+# ------------------------------------------- introspection service authentication
+
+
+@pytest.mark.anyio
+async def test_verifier_presents_the_service_credential_to_introspection(verifier, auth):
+    body = _mint(auth)
+    assert await verifier.verify_token(body["access_token"]) is not None
+    assert any("/introspect/grant/" in url for url in _ForwardingClient.seen)
+
+
+@pytest.mark.anyio
+async def test_missing_service_credential_fails_closed(auth, monkeypatch):
+    """No credential must mean no OAuth tokens accepted — never blanket acceptance."""
+    monkeypatch.setattr(composite_mod.httpx, "AsyncClient", _ForwardingClient)
+    _ForwardingClient.target = auth
+    _ForwardingClient.offline = False
+    body = _mint(auth)
+
+    v = CompositeTokenVerifier(
+        cloudpod_url="https://pb.test.invalid",
+        issuer_url=ISSUER,
+        resource_url=RESOURCE,
+        introspection_secret=None,
+    )
+    v._fallback = _FakeFallback()
+    assert await v.verify_token(body["access_token"]) is None
+
+
+@pytest.mark.anyio
+async def test_invalid_service_credential_fails_closed(auth, monkeypatch):
+    monkeypatch.setattr(composite_mod.httpx, "AsyncClient", _ForwardingClient)
+    _ForwardingClient.target = auth
+    _ForwardingClient.offline = False
+    body = _mint(auth)
+
+    v = CompositeTokenVerifier(
+        cloudpod_url="https://pb.test.invalid",
+        issuer_url=ISSUER,
+        resource_url=RESOURCE,
+        introspection_secret="wrong-secret-that-is-long-enough-1234",
+    )
+    v._fallback = _FakeFallback()
+    assert await v.verify_token(body["access_token"]) is None, (
+        "a rejected service credential must deny the token, not pass it through"
+    )
+
+
+@pytest.mark.anyio
+async def test_a_rejected_service_credential_does_not_fall_through_to_pocketbase(auth,
+                                                                                monkeypatch):
+    """An OAuth token that fails introspection must be denied outright — not retried as
+    if it were a PocketBase bearer, which would hand the decision to a different system."""
+    monkeypatch.setattr(composite_mod.httpx, "AsyncClient", _ForwardingClient)
+    _ForwardingClient.target = auth
+    _ForwardingClient.offline = False
+    body = _mint(auth)
+
+    v = CompositeTokenVerifier(
+        cloudpod_url="https://pb.test.invalid",
+        issuer_url=ISSUER,
+        resource_url=RESOURCE,
+        introspection_secret="wrong-secret-that-is-long-enough-1234",
+    )
+    v._fallback = _FakeFallback()
+    assert await v.verify_token(body["access_token"]) is None
+    assert v._fallback.calls == []
+
+
+@pytest.mark.anyio
+async def test_static_bearer_unaffected_by_a_bad_service_credential(auth, monkeypatch):
+    """Introspection misconfiguration must not touch the existing Claude Code path."""
+    monkeypatch.setattr(composite_mod.httpx, "AsyncClient", _ForwardingClient)
+    _ForwardingClient.target = auth
+    _ForwardingClient.offline = False
+
+    v = CompositeTokenVerifier(
+        cloudpod_url="https://pb.test.invalid",
+        issuer_url=ISSUER,
+        resource_url=RESOURCE,
+        introspection_secret=None,
+    )
+    v._fallback = _FakeFallback()
+    result = await v.verify_token(STATIC_BEARER)
+    assert result is not None and result.subject == PB_USER
+
+
+@pytest.mark.anyio
+async def test_internal_url_is_used_for_jwks_and_introspection_not_the_public_issuer(auth,
+                                                                                     monkeypatch):
+    """The issuer stays the public identity; the traffic goes over the private origin."""
+    internal = "https://auth-internal.test.invalid"
+
+    class _InternalOnly(_ForwardingClient):
+        async def get(self, url, **kwargs):
+            if url.startswith(internal):
+                _ForwardingClient.seen.append(url)
+                return _ForwardingClient.target.get(url[len(internal):],
+                                                    headers=kwargs.get("headers") or {})
+            if url.startswith(ISSUER):
+                raise AssertionError(f"public issuer must not be called internally: {url}")
+            return await FakeAsyncClient.get(self, url, **kwargs)
+
+    monkeypatch.setattr(composite_mod.httpx, "AsyncClient", _InternalOnly)
+    _ForwardingClient.target = auth
+    _ForwardingClient.offline = False
+    _ForwardingClient.seen = []
+    body = _mint(auth)
+
+    v = CompositeTokenVerifier(
+        cloudpod_url="https://pb.test.invalid",
+        issuer_url=ISSUER,
+        resource_url=RESOURCE,
+        internal_auth_url=internal,
+        introspection_secret=INTROSPECTION_SECRET,
+    )
+    v._fallback = _FakeFallback()
+    result = await v.verify_token(body["access_token"])
+    assert result is not None, "token minted by the public issuer must still validate"
+    assert any(u.startswith(f"{internal}/.well-known/jwks.json")
+               for u in _ForwardingClient.seen)
+    assert any(u.startswith(f"{internal}/introspect/grant/") for u in _ForwardingClient.seen)

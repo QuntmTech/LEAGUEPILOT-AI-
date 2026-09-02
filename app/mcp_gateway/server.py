@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 
 from app.mcp_gateway.client import CloudPodClient
 from app.mcp_gateway.composite_auth import CompositeTokenVerifier
+from app.mcp_gateway.errors import McpAuthenticationError, McpScopeError
 from app.mcp_gateway.models import ToolEnvelope
 from app.mcp_gateway.service import AnalysisKind, LeaguePilotMcpService
 from app.mcp_gateway.settings import McpSettings
@@ -31,12 +32,22 @@ SERVER_INSTRUCTIONS = (
 )
 
 
+# Advertised to clients as available to request. Enforcement is per tool, below.
+SUPPORTED_SCOPES = {"leaguepilot:read", "leaguepilot:write"}
+
+
 def _current_token(required_scope: str = "leaguepilot:read") -> str:
+    """Resolve the caller's token, enforcing this tool's scope.
+
+    Scope is enforced per tool, not at the transport. Requiring write merely to open a
+    connection would mean a read-only grant could not authenticate at all, which makes
+    the read scope meaningless and forces every client to ask for write it may not need.
+    """
     access = get_access_token()
     if access is None or not access.token:
-        raise PermissionError("A valid LEAGUEPILOT account connection is required.")
+        raise McpAuthenticationError()
     if required_scope not in access.scopes:
-        raise PermissionError(f"The connected account is missing the {required_scope} scope.")
+        raise McpScopeError(required_scope, granted=tuple(access.scopes or ()))
     return access.token
 
 
@@ -64,6 +75,8 @@ def create_mcp_server(
         cloudpod_url=resolved.backend_url,
         issuer_url=str(resolved.issuer_url),
         resource_url=resolved.resource_url,
+        internal_auth_url=resolved.internal_auth_origin,
+        introspection_secret=resolved.introspection_token,
         timeout_seconds=resolved.request_timeout_seconds,
     )
     factory = client_factory or (
@@ -86,7 +99,11 @@ def create_mcp_server(
             issuer_url=resolved.issuer_url,
             resource_server_url=resolved.public_url,
             service_documentation_url=resolved.documentation_url,
-            required_scopes=["leaguepilot:read", "leaguepilot:write"],
+            # Deliberately empty: authenticating must not require write. The transport
+            # can only apply one scope list to every request, so a write requirement
+            # here would reject a read-only grant before any tool is named. Each tool
+            # enforces its own scope via _current_token().
+            required_scopes=[],
         ),
         host=resolved.host,
         port=resolved.port,
@@ -273,5 +290,34 @@ def create_mcp_server(
     return server
 
 
+def build_http_app(server: FastMCP, settings: McpSettings | None = None):
+    """Build the ASGI app, separating advertised scopes from enforced ones.
+
+    FastMCP passes `AuthSettings.required_scopes` to two different places: the transport
+    middleware that rejects requests, and the RFC 9728 `scopes_supported` field that tells
+    clients which scopes exist. Those are not the same thing. We enforce nothing at the
+    transport (each tool checks its own scope) but must still advertise both scopes, or a
+    client has no way to learn that `leaguepilot:write` is available to request.
+    """
+    from mcp.server.auth.routes import create_protected_resource_routes
+
+    resolved = settings or McpSettings()
+    http_app = server.streamable_http_app()
+
+    replacement = create_protected_resource_routes(
+        resource_url=resolved.public_url,
+        authorization_servers=[resolved.issuer_url],
+        scopes_supported=sorted(SUPPORTED_SCOPES),
+        resource_name="FΛNTΛSY WΛRROOM",
+        resource_documentation=resolved.documentation_url,
+    )
+    wanted = {route.path for route in replacement}
+    http_app.router.routes = [
+        route for route in http_app.router.routes
+        if getattr(route, "path", None) not in wanted
+    ] + replacement
+    return http_app
+
+
 mcp = create_mcp_server()
-app = mcp.streamable_http_app()
+app = build_http_app(mcp)

@@ -25,10 +25,12 @@ from app.auth_server import clients as clients_mod
 from app.auth_server import server as server_mod
 from app.auth_server.models import AuthorizationCode, Grant, OAuthClient
 from app.auth_server.settings import AuthServerSettings
+from app.auth_server.throttle import IDENTIFIER_LIMIT
 
 ISSUER = "https://auth.test.invalid"
 RESOURCE = "https://mcp.test.invalid"
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
+INTROSPECTION_SECRET = "test-introspection-secret-value-0123456789"
 USER_ID = "user0000000001x"
 OTHER_USER_ID = "user0000000002x"
 
@@ -101,6 +103,7 @@ def settings(tmp_path) -> AuthServerSettings:
         resource_url=f"{RESOURCE}/",
         cloudpod_url="https://pb.test.invalid",
         database_url=f"sqlite:///{tmp_path/'auth.db'}",
+        introspection_secret=INTROSPECTION_SECRET,
         authorization_code_ttl_seconds=60,
         access_token_ttl_seconds=300,
     )
@@ -117,6 +120,10 @@ def client(settings, monkeypatch):
     }
     FakeAsyncClient.calls = []
     server_mod._PENDING.clear()
+    # Module-level throttles outlive any one app instance, so reset them or tests leak
+    # failure counts into each other.
+    server_mod._IDENTIFIER_THROTTLE.reset()
+    server_mod._NETWORK_THROTTLE.reset()
     app = server_mod.create_app(settings)
     with TestClient(app) as test_client:
         test_client.app_state = app.state
@@ -182,6 +189,11 @@ def _full_code(client, *, scope=None, verifier=None):
     redirect = _consent(client, page.text)
     assert redirect.status_code == 302
     return client_id, verifier, _code_from(redirect)
+
+
+def _introspect(client, grant_id, *, secret=INTROSPECTION_SECRET):
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+    return client.get(f"/introspect/grant/{grant_id}", headers=headers)
 
 
 def _exchange(client, client_id, code, verifier, *, redirect_uri=REDIRECT, resource=None):
@@ -645,10 +657,10 @@ def test_revoking_a_refresh_token_kills_the_grant(client):
 
     jwks = client.get("/.well-known/jwks.json").json()
     gid = decode_access_token(body["access_token"], jwks, issuer=ISSUER, audience=RESOURCE)["gid"]
-    assert client.get(f"/introspect/grant/{gid}").json()["active"] is True
+    assert _introspect(client, gid).json()["active"] is True
 
     assert client.post("/revoke", data={"token": body["refresh_token"]}).status_code == 200
-    assert client.get(f"/introspect/grant/{gid}").json()["active"] is False
+    assert _introspect(client, gid).json()["active"] is False
 
     # And the refresh token no longer works.
     assert client.post("/token", data={"grant_type": "refresh_token",
@@ -664,7 +676,7 @@ def test_revoking_an_access_token_kills_the_grant(client):
     jwks = client.get("/.well-known/jwks.json").json()
     gid = decode_access_token(body["access_token"], jwks, issuer=ISSUER, audience=RESOURCE)["gid"]
     client.post("/revoke", data={"token": body["access_token"]})
-    assert client.get(f"/introspect/grant/{gid}").json()["active"] is False
+    assert _introspect(client, gid).json()["active"] is False
 
 
 def test_revoking_an_unknown_token_still_returns_200(client):
@@ -674,7 +686,7 @@ def test_revoking_an_unknown_token_still_returns_200(client):
 
 
 def test_introspect_reports_unknown_grant_as_inactive(client):
-    assert client.get("/introspect/grant/does-not-exist").json()["active"] is False
+    assert _introspect(client, "does-not-exist").json()["active"] is False
 
 
 # --------------------------------------------- 19. signing key rotation and retention
@@ -984,3 +996,222 @@ def test_consent_page_cannot_be_framed_or_cached(client):
     assert page.headers.get("X-Frame-Options") == "DENY"
     assert "frame-ancestors 'none'" in page.headers.get("Content-Security-Policy", "")
     assert "no-store" in page.headers.get("Cache-Control", "")
+
+
+# ------------------------------------------- grant introspection authentication
+
+
+def test_introspection_requires_a_service_credential(client):
+    client_id, verifier, code = _full_code(client)
+    body = _exchange(client, client_id, code, verifier).json()
+    from app.auth_server.tokens import decode_access_token
+
+    jwks = client.get("/.well-known/jwks.json").json()
+    gid = decode_access_token(body["access_token"], jwks, issuer=ISSUER, audience=RESOURCE)["gid"]
+
+    # Authenticated: answers.
+    assert _introspect(client, gid).json()["active"] is True
+
+    # No credential at all.
+    missing = client.get(f"/introspect/grant/{gid}")
+    assert missing.status_code == 401
+    assert "active" not in missing.json()
+    assert missing.headers.get("WWW-Authenticate") == "Bearer"
+
+    # Wrong credential.
+    wrong = _introspect(client, gid, secret="not-the-right-secret-but-long-enough-x")
+    assert wrong.status_code == 401
+    assert "active" not in wrong.json()
+
+    # Malformed header.
+    malformed = client.get(f"/introspect/grant/{gid}",
+                           headers={"Authorization": INTROSPECTION_SECRET})
+    assert malformed.status_code == 401
+
+
+def test_introspection_does_not_reveal_whether_a_grant_exists_to_an_unauthenticated_caller(client):
+    """An unknown id and a real one must be indistinguishable without the credential."""
+    client_id, verifier, code = _full_code(client)
+    body = _exchange(client, client_id, code, verifier).json()
+    from app.auth_server.tokens import decode_access_token
+
+    jwks = client.get("/.well-known/jwks.json").json()
+    gid = decode_access_token(body["access_token"], jwks, issuer=ISSUER, audience=RESOURCE)["gid"]
+
+    real = client.get(f"/introspect/grant/{gid}")
+    fake = client.get("/introspect/grant/definitely-not-a-real-grant")
+    assert real.status_code == fake.status_code == 401
+    assert real.json() == fake.json()
+
+
+def test_introspection_never_echoes_the_presented_credential(client):
+    response = _introspect(client, "whatever", secret="leaked-secret-should-not-appear-xxxx")
+    assert "leaked-secret-should-not-appear" not in response.text
+
+
+def test_introspection_secret_is_not_exposed_by_any_public_endpoint(client):
+    for path in ("/.well-known/oauth-authorization-server", "/.well-known/jwks.json",
+                 "/healthz"):
+        assert INTROSPECTION_SECRET not in client.get(path).text
+
+
+def test_introspection_secret_is_required_and_must_be_long(tmp_path):
+    """A short or absent shared secret is a configuration error, not a warning."""
+    from pydantic import ValidationError
+
+    base = dict(
+        issuer_url=f"{ISSUER}/",
+        resource_url=f"{RESOURCE}/",
+        cloudpod_url="https://pb.test.invalid",
+        database_url=f"sqlite:///{tmp_path/'x.db'}",
+    )
+    with pytest.raises(ValidationError):
+        AuthServerSettings(**base, introspection_secret="too-short")
+    with pytest.raises(ValidationError):
+        AuthServerSettings(**base)
+
+
+def test_settings_repr_does_not_leak_the_introspection_secret(settings):
+    assert INTROSPECTION_SECRET not in repr(settings)
+    assert INTROSPECTION_SECRET not in str(settings.introspection_secret)
+
+
+# ----------------------------------------- cross-request sign-in rate limiting
+
+
+def test_new_clients_and_new_requests_cannot_reset_the_guessing_budget(client):
+    """The core of the fix.
+
+    A per-request attempt counter alone is defeated by simply starting another
+    authorization request — or registering another client — and collecting a fresh
+    budget. The identifier budget lives outside any single request, so it must survive
+    both.
+    """
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+
+    victim = "victim@example.com"
+    reached = 0
+    throttled = False
+
+    # Fresh client AND fresh authorization request on every single attempt.
+    for _ in range(40):
+        _, challenge = _pkce()
+        client_id = _register(client)
+        page = _authorize(client, client_id, challenge)
+        if page.status_code != 200:
+            break
+        token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+        response = client.post(
+            "/authorize",
+            data={"request_token": token, "decision": "allow",
+                  "email": victim, "password": "guess"},
+            follow_redirects=False,
+        )
+        if response.status_code == 429:
+            throttled = True
+            break
+        reached += 1
+
+    assert throttled, "rotating clients and requests bypassed the budget entirely"
+    assert reached <= IDENTIFIER_LIMIT, (
+        f"{reached} guesses reached the identity backend against one account"
+    )
+
+
+def test_case_and_padding_variants_share_one_identifier_budget(client):
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+
+    variants = ["Victim@Example.com", "  victim@example.com ", "VICTIM@EXAMPLE.COM"]
+    throttled = False
+    for index in range(40):
+        _, challenge = _pkce()
+        client_id = _register(client)
+        page = _authorize(client, client_id, challenge)
+        token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+        response = client.post(
+            "/authorize",
+            data={"request_token": token, "decision": "allow",
+                  "email": variants[index % len(variants)], "password": "guess"},
+            follow_redirects=False,
+        )
+        if response.status_code == 429:
+            throttled = True
+            break
+    assert throttled, "case or whitespace variants bought extra attempts"
+
+
+def test_throttled_response_does_not_reveal_whether_the_account_exists(client):
+    """Same wording for a real account and an unknown one."""
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+
+    def _exhaust(email):
+        last = None
+        for _ in range(IDENTIFIER_LIMIT + 4):
+            _, challenge = _pkce()
+            client_id = _register(client)
+            page = _authorize(client, client_id, challenge)
+            token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+            last = client.post(
+                "/authorize",
+                data={"request_token": token, "decision": "allow",
+                      "email": email, "password": "guess"},
+                follow_redirects=False,
+            )
+            if last.status_code == 429:
+                return last
+        return last
+
+    known = _exhaust("owner@example.com")
+    unknown = _exhaust("nobody-at-all@example.com")
+    assert known.status_code == unknown.status_code == 429
+    assert known.text == unknown.text
+
+
+def test_throttling_is_not_a_permanent_lockout(client, monkeypatch):
+    """An attacker must not be able to hold a victim's account hostage indefinitely."""
+    from app.auth_server import throttle as throttle_mod
+
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_denied()
+
+    for _ in range(IDENTIFIER_LIMIT + 4):
+        _, challenge = _pkce()
+        client_id = _register(client)
+        page = _authorize(client, client_id, challenge)
+        token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+        blocked = client.post(
+            "/authorize",
+            data={"request_token": token, "decision": "allow",
+                  "email": "victim@example.com", "password": "guess"},
+            follow_redirects=False,
+        )
+        if blocked.status_code == 429:
+            break
+    assert blocked.status_code == 429
+
+    # Advance past the window; the budget must clear itself with no operator action.
+    import time as real_time
+    base = real_time.monotonic()
+    monkeypatch.setattr(throttle_mod.time, "monotonic", lambda: base + 901)
+
+    FakeAsyncClient.routes[
+        ("POST", "https://pb.test.invalid/api/collections/users/auth-with-password")
+    ] = _pocketbase_ok()
+    _, challenge = _pkce()
+    client_id = _register(client)
+    page = _authorize(client, client_id, challenge)
+    token = re.search(r'name="request_token" value="([^"]+)"', page.text).group(1)
+    recovered = client.post(
+        "/authorize",
+        data={"request_token": token, "decision": "allow",
+              "email": "victim@example.com", "password": "correct"},
+        follow_redirects=False,
+    )
+    assert recovered.status_code == 302, "the account never recovered"
