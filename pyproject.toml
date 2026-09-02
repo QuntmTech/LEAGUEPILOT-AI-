@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "QuntmTech" }]
 dependencies = [
+  "authlib>=1.6,<2",
   "cryptography>=50,<51",
   "fastapi==0.141.1",
   "httpx>=0.28,<1",
@@ -33,6 +34,7 @@ dev = [
 [project.scripts]
 leaguepilot-ai = "app.cli:main"
 leaguepilot-mcp = "app.mcp_gateway.cli:main"
+leaguepilot-auth = "app.auth_server.cli:main"
 fantasy-command-center = "app.cli:main"
 
 [tool.hatch.build.targets.wheel]

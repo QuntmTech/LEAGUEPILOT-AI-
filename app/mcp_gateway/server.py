@@ -13,7 +13,7 @@ from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.mcp_gateway.auth import PocketBaseTokenVerifier
+from app.mcp_gateway.composite_auth import CompositeTokenVerifier
 from app.mcp_gateway.client import CloudPodClient
 from app.mcp_gateway.models import ToolEnvelope
 from app.mcp_gateway.service import AnalysisKind, LeaguePilotMcpService
@@ -58,8 +58,13 @@ def create_mcp_server(
     client_factory: Callable[[str], CloudPodClient] | None = None,
 ) -> FastMCP:
     resolved = settings or McpSettings()
-    verifier = token_verifier or PocketBaseTokenVerifier(
-        resolved.backend_url, timeout_seconds=resolved.request_timeout_seconds
+    # Accepts OAuth access tokens from the authorization server AND existing PocketBase
+    # bearers, so the working Claude Code connection survives the migration untouched.
+    verifier = token_verifier or CompositeTokenVerifier(
+        cloudpod_url=resolved.backend_url,
+        issuer_url=str(resolved.issuer_url),
+        resource_url=resolved.resource_url,
+        timeout_seconds=resolved.request_timeout_seconds,
     )
     factory = client_factory or (
         lambda token: CloudPodClient(
