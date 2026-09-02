@@ -19,7 +19,7 @@ def issue_access_token(
     therefore useless at any other server that validates audience, which is what the
     MCP resource-parameter requirement is protecting against.
     """
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     claims = {
         "iss": issuer,
         "sub": subject,

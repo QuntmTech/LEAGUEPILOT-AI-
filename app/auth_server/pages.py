@@ -14,25 +14,34 @@ def _shell(body: str, *, title: str) -> str:
 <title>{html.escape(title)}</title>
 <style>
 :root{{--forest:#122f28;--green:#1d5949;--paper:#f5f1e8;--card:#fffdf8;--line:#d7d1c6;--ink:#17221f;--muted:#6e7772;--red:#b75042}}
-*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
-background:var(--paper);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
-.card{{width:100%;max-width:420px;padding:28px;border:1px solid var(--line);border-radius:16px;background:var(--card);
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;
+padding:24px;background:var(--paper);color:var(--ink);
+font:14px/1.6 -apple-system,BlinkMacSystemFont,sans-serif}}
+.card{{width:100%;max-width:420px;padding:28px;border:1px solid var(--line);
+border-radius:16px;background:var(--card);
 box-shadow:0 12px 38px rgba(18,47,40,.08)}}
 h1{{margin:0 0 6px;font-size:22px;letter-spacing:-.03em}}
 p.sub{{margin:0 0 20px;color:var(--muted);font-size:13px}}
 label{{display:block;margin:0 0 5px;font-size:12px;font-weight:700}}
-input{{width:100%;min-height:44px;margin-bottom:14px;padding:0 12px;border:1px solid var(--line);
+input{{width:100%;min-height:44px;margin-bottom:14px;padding:0 12px;
+border:1px solid var(--line);
 border-radius:9px;background:#fff;font:inherit}}
 input:focus-visible{{outline:3px solid var(--green);outline-offset:1px}}
-button{{width:100%;min-height:46px;border:0;border-radius:9px;background:var(--green);color:#fff;
+button{{width:100%;min-height:46px;border:0;border-radius:9px;
+background:var(--green);color:#fff;
 font:inherit;font-weight:700;cursor:pointer}}
-button.secondary{{margin-top:9px;background:transparent;color:var(--muted);border:1px solid var(--line)}}
-.scopes{{margin:0 0 18px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--paper)}}
+button.secondary{{margin-top:9px;background:transparent;color:var(--muted);
+border:1px solid var(--line)}}
+.scopes{{margin:0 0 18px;padding:12px 14px;border:1px solid var(--line);
+border-radius:11px;background:var(--paper)}}
 .scopes li{{margin:3px 0;font-size:13px}}.scopes ul{{margin:6px 0 0;padding-left:18px}}
-.err{{margin:0 0 14px;padding:10px 12px;border:1px solid var(--red);border-radius:9px;color:var(--red);font-size:13px}}
+.err{{margin:0 0 14px;padding:10px 12px;border:1px solid var(--red);
+border-radius:9px;color:var(--red);font-size:13px}}
 .note{{margin:16px 0 0;color:var(--muted);font-size:11px}}
-.brand{{display:flex;align-items:center;gap:8px;margin-bottom:18px;font-weight:900;letter-spacing:-.02em}}
-.brand span{{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--forest);color:#b8dc73;font-size:11px}}
+.brand{{display:flex;align-items:center;gap:8px;margin-bottom:18px;
+font-weight:900;letter-spacing:-.02em}}
+.brand span{{display:grid;place-items:center;width:28px;height:28px;
+border-radius:8px;background:var(--forest);color:#b8dc73;font-size:11px}}
 </style></head><body><main class="card">
 <div class="brand"><span>LP</span>LEAGUEPILOT AI</div>
 {body}

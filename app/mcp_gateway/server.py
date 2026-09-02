@@ -13,8 +13,8 @@ from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.mcp_gateway.composite_auth import CompositeTokenVerifier
 from app.mcp_gateway.client import CloudPodClient
+from app.mcp_gateway.composite_auth import CompositeTokenVerifier
 from app.mcp_gateway.models import ToolEnvelope
 from app.mcp_gateway.service import AnalysisKind, LeaguePilotMcpService
 from app.mcp_gateway.settings import McpSettings

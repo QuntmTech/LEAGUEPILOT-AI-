@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import logging
 import secrets
 from urllib.parse import urlencode, urlsplit
@@ -13,7 +12,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.auth_server import clients as client_lib
 from app.auth_server import pages, tokens
 from app.auth_server.keys import (
-    KeyStore, hash_token, load_encryption_key, new_secret, verify_pkce,
+    KeyStore,
+    hash_token,
+    load_encryption_key,
+    new_secret,
+    verify_pkce,
 )
 from app.auth_server.models import AuthorizationCode, Grant, OAuthClient, build_session_factory
 from app.auth_server.settings import AuthServerSettings
@@ -28,7 +31,7 @@ _PENDING_TTL = dt.timedelta(minutes=10)
 
 
 def _prune_pending() -> None:
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     for key, value in list(_PENDING.items()):
         if value["created"] + _PENDING_TTL < now:
             _PENDING.pop(key, None)
@@ -40,7 +43,9 @@ def _oauth_error(error: str, description: str, status: int = 400) -> JSONRespons
     return JSONResponse({"error": error, "error_description": description}, status_code=status)
 
 
-def _redirect_error(redirect_uri: str, error: str, description: str, state: str | None) -> RedirectResponse:
+def _redirect_error(
+    redirect_uri: str, error: str, description: str, state: str | None
+) -> RedirectResponse:
     params = {"error": error, "error_description": description}
     if state:
         params["state"] = state
@@ -95,7 +100,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
-        return JSONResponse({"status": "ok", "service": "leaguepilot-auth", "issuer": resolved.issuer})
+        return JSONResponse(
+            {"status": "ok", "service": "leaguepilot-auth", "issuer": resolved.issuer}
+        )
 
     # ---------- dynamic client registration ----------
 
@@ -122,7 +129,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                     client_name=str(body.get("client_name") or "")[:255],
                     redirect_uris="\n".join(redirects),
                     scope=scope,
-                    token_endpoint_auth_method="none",
+                    token_endpoint_auth_method="none",  # noqa: S106 - OAuth field, not a password
                     is_url_client=False,
                 )
             )
@@ -131,7 +138,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         return JSONResponse(
             {
                 "client_id": client_id,
-                "client_id_issued_at": int(dt.datetime.now(dt.timezone.utc).timestamp()),
+                "client_id_issued_at": int(dt.datetime.now(dt.UTC).timestamp()),
                 "redirect_uris": redirects,
                 "scope": scope,
                 "token_endpoint_auth_method": "none",
@@ -155,7 +162,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
                 client_id, resolved.request_timeout_seconds
             )
             with sessions() as session:
-                client = client_lib.upsert_url_client(session, client_id, document, SUPPORTED_SCOPES)
+                client = client_lib.upsert_url_client(
+                    session, client_id, document, SUPPORTED_SCOPES
+                )
                 session.commit()
                 session.refresh(client)
                 session.expunge(client)
@@ -173,7 +182,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         resource = params.get("resource", "")
 
         if params.get("response_type") != "code":
-            return HTMLResponse(pages.error_page("Only the authorization code flow is supported."), 400)
+            return HTMLResponse(
+                pages.error_page("Only the authorization code flow is supported."), 400
+            )
         try:
             client = await _resolve_client(client_id)
         except client_lib.ClientError as exc:
@@ -182,15 +193,22 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         # Exact match. Anything else and we must not redirect, because an attacker-supplied
         # URI is exactly how codes get exfiltrated.
         if redirect_uri not in client.redirect_uri_list():
-            return HTMLResponse(pages.error_page("The redirect URI does not match this client's registration."), 400)
+            return HTMLResponse(
+                pages.error_page("The redirect URI does not match this client's registration."),
+                400,
+            )
 
         # From here failures can safely redirect, since the URI is proven to be the client's.
         if method != "S256" or not challenge:
-            return _redirect_error(redirect_uri, "invalid_request", "PKCE with S256 is required.", state)
+            return _redirect_error(
+                redirect_uri, "invalid_request", "PKCE with S256 is required.", state
+            )
         if resource and resource.rstrip("/") != resolved.resource:
             return _redirect_error(redirect_uri, "invalid_target", "Unsupported resource.", state)
         try:
-            scope = client_lib.normalize_scope(params.get("scope") or client.scope, SUPPORTED_SCOPES)
+            scope = client_lib.normalize_scope(
+                params.get("scope") or client.scope, SUPPORTED_SCOPES
+            )
         except client_lib.ClientError as exc:
             return _redirect_error(redirect_uri, exc.error, exc.description, state)
 
@@ -205,7 +223,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             "challenge": challenge,
             "method": method,
             "resource": resolved.resource,
-            "created": dt.datetime.now(dt.timezone.utc),
+            "created": dt.datetime.now(dt.UTC),
         }
         return HTMLResponse(
             pages.login_page(
@@ -225,7 +243,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         _prune_pending()
         pending = _PENDING.get(request_token)
         if not pending:
-            return HTMLResponse(pages.error_page("This authorization request expired. Start again."), 400)
+            return HTMLResponse(
+                pages.error_page("This authorization request expired. Start again."), 400
+            )
 
         redirect_uri = pending["redirect_uri"]
         state = pending["state"]
@@ -258,11 +278,13 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         subject = str(payload.get("record", {}).get("id") or "")
         upstream = str(payload.get("token") or "")
         if not subject or not upstream:
-            return HTMLResponse(pages.error_page("The sign-in service returned an unexpected response."), 502)
+            return HTMLResponse(
+                pages.error_page("The sign-in service returned an unexpected response."), 502
+            )
 
         _PENDING.pop(request_token, None)
         code = new_secret(32)
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         with sessions() as session:
             session.add(
                 AuthorizationCode(
@@ -302,7 +324,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         client_id = str(form.get("client_id") or "")
         redirect_uri = str(form.get("redirect_uri") or "")
         resource = str(form.get("resource") or "")
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
 
         with sessions() as session:
             record = session.get(AuthorizationCode, hash_token(code)) if code else None
@@ -323,9 +345,14 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             if record.expires_at <= now:
                 return _oauth_error("invalid_grant", "The authorization code has expired.")
             if record.client_id != client_id:
-                return _oauth_error("invalid_grant", "The authorization code was issued to another client.")
+                return _oauth_error(
+                    "invalid_grant", "The authorization code was issued to another client."
+                )
             if record.redirect_uri != redirect_uri:
-                return _oauth_error("invalid_grant", "The redirect URI does not match the authorization request.")
+                return _oauth_error(
+                    "invalid_grant",
+                    "The redirect URI does not match the authorization request.",
+                )
             if resource and resource.rstrip("/") != record.resource:
                 return _oauth_error("invalid_target", "Unsupported resource.")
             if not verify_pkce(verifier, record.code_challenge, record.code_challenge_method):
@@ -371,7 +398,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
     async def _refresh(form) -> JSONResponse:
         presented = str(form.get("refresh_token") or "")
         client_id = str(form.get("client_id") or "")
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         with sessions() as session:
             grant = (
                 session.query(Grant)
@@ -382,7 +409,9 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
             if grant is None or grant.revoked_at is not None or grant.expires_at <= now:
                 return _oauth_error("invalid_grant", "The refresh token is invalid.")
             if grant.client_id != client_id:
-                return _oauth_error("invalid_grant", "The refresh token was issued to another client.")
+                return _oauth_error(
+                    "invalid_grant", "The refresh token was issued to another client."
+                )
             # Rotate on every use so a stolen refresh token is single-use at best.
             rotated = new_secret(32)
             grant.refresh_token_hash = hash_token(rotated)
@@ -411,7 +440,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         be used to probe which tokens exist."""
         form = await request.form()
         presented = str(form.get("token") or "")
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         if presented:
             with sessions() as session:
                 grant = (
@@ -440,7 +469,7 @@ def create_app(settings: AuthServerSettings | None = None) -> FastAPI:
         with sessions() as session:
             grant = session.get(Grant, grant_id)
             active = bool(grant and grant.revoked_at is None
-                          and grant.expires_at > dt.datetime.now(dt.timezone.utc))
+                          and grant.expires_at > dt.datetime.now(dt.UTC))
             return JSONResponse({"active": active})
 
     return app

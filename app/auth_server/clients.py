@@ -102,7 +102,11 @@ async def fetch_client_id_metadata(client_id: str, timeout_seconds: float) -> di
         async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as http:
             response = await http.get(client_id, headers={"Accept": "application/json"})
     except httpx.HTTPError:
-        raise ClientError("invalid_client", "Client ID metadata document could not be retrieved.")
+        # `from None` is deliberate: chaining would attach upstream HTTP detail to a
+        # client-visible OAuth error.
+        raise ClientError(
+            "invalid_client", "Client ID metadata document could not be retrieved."
+        ) from None
 
     if response.status_code != 200:
         raise ClientError("invalid_client", "Client ID metadata document could not be retrieved.")
@@ -111,7 +115,9 @@ async def fetch_client_id_metadata(client_id: str, timeout_seconds: float) -> di
     try:
         document = response.json()
     except ValueError:
-        raise ClientError("invalid_client", "Client ID metadata document is not valid JSON.")
+        raise ClientError(
+            "invalid_client", "Client ID metadata document is not valid JSON."
+        ) from None
     if not isinstance(document, dict):
         raise ClientError("invalid_client", "Client ID metadata document is not an object.")
 
@@ -124,11 +130,13 @@ async def fetch_client_id_metadata(client_id: str, timeout_seconds: float) -> di
     return document
 
 
-def upsert_url_client(session, client_id: str, document: dict, allowed_scopes: set[str]) -> OAuthClient:
+def upsert_url_client(
+    session, client_id: str, document: dict, allowed_scopes: set[str]
+) -> OAuthClient:
     """Cache a metadata-document client. Never given a secret: it is a public client."""
     redirects = validate_redirect_uris(list(document.get("redirect_uris") or []))
     scope = normalize_scope(document.get("scope"), allowed_scopes)
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
 
     client = session.get(OAuthClient, client_id)
     if client is None:
@@ -136,7 +144,7 @@ def upsert_url_client(session, client_id: str, document: dict, allowed_scopes: s
     client.client_name = str(document.get("client_name") or "")[:255]
     client.redirect_uris = "\n".join(redirects)
     client.scope = scope
-    client.token_endpoint_auth_method = "none"
+    client.token_endpoint_auth_method = "none"  # noqa: S105 - OAuth field, not a password
     client.is_url_client = True
     client.client_secret_hash = None
     client.metadata_fetched_at = now
@@ -147,5 +155,5 @@ def upsert_url_client(session, client_id: str, document: dict, allowed_scopes: s
 def metadata_is_fresh(client: OAuthClient) -> bool:
     if not client.metadata_fetched_at:
         return False
-    age = dt.datetime.now(dt.timezone.utc) - client.metadata_fetched_at
+    age = dt.datetime.now(dt.UTC) - client.metadata_fetched_at
     return age.total_seconds() < METADATA_CACHE_SECONDS

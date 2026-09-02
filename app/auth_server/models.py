@@ -3,7 +3,12 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, DateTime, Index, Integer, String, Text, create_engine,
+    Boolean,
+    DateTime,
+    Index,
+    String,
+    Text,
+    create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -13,7 +18,7 @@ class Base(DeclarativeBase):
 
 
 def _utcnow() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 class OAuthClient(Base):
@@ -39,7 +44,9 @@ class OAuthClient(Base):
     scope: Mapped[str] = mapped_column(String(512), default="leaguepilot:read")
     token_endpoint_auth_method: Mapped[str] = mapped_column(String(64), default="none")
     is_url_client: Mapped[bool] = mapped_column(Boolean, default=False)
-    metadata_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    metadata_fetched_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     def redirect_uri_list(self) -> list[str]:

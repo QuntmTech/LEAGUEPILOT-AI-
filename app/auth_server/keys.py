@@ -74,7 +74,7 @@ class KeyStore:
 
     def active_key(self) -> tuple[str, str]:
         """Return (kid, private PEM), generating or rotating as needed."""
-        now = dt.datetime.now(dt.timezone.utc)
+        now = dt.datetime.now(dt.UTC)
         with self._sessions() as session:
             key = (
                 session.query(SigningKey)
@@ -119,7 +119,7 @@ class KeyStore:
 
     def public_jwks(self) -> dict:
         """Every key still inside its retire window, so recently issued tokens verify."""
-        cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=2)
+        cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=2)
         with self._sessions() as session:
             rows = (
                 session.query(SigningKey)
@@ -140,6 +140,7 @@ def load_encryption_key() -> str:
     if not value:
         raise RuntimeError(
             "LEAGUEPILOT_AUTH_ENCRYPTION_KEY is required; generate one with "
-            "`python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"`"
+            "`python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\"`"
         )
     return value

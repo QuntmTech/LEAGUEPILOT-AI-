@@ -225,7 +225,8 @@ def test_no_secret_is_rendered_logged_or_returned() -> None:
                 "app/mcp_gateway/composite_auth.py"):
         src = _src(rel)
         assert not re.search(r"print\(", src), f"{rel} must not print"
-        assert "logger.info(" not in src or "token" not in src.lower().split("logger.info(")[1][:200]
+        after_log = src.lower().split("logger.info(")
+        assert "logger.info(" not in src or "token" not in after_log[1][:200]
     server = _src("app/auth_server/server.py")
     # Token responses must not be cached by intermediaries.
     assert '"Cache-Control": "no-store"' in server
