@@ -224,7 +224,10 @@ def test_no_secret_is_rendered_logged_or_returned() -> None:
                 "app/auth_server/clients.py", "app/auth_server/keys.py",
                 "app/mcp_gateway/composite_auth.py"):
         src = _src(rel)
-        assert not re.search(r"print\(", src), f"{rel} must not print"
+        # A print *statement*, not the substring: keys.py legitimately contains
+        # "print(Fernet.generate_key()...)" inside an operator-facing instruction string.
+        statements = re.findall(r"^\s*print\(", src, re.MULTILINE)
+        assert statements == [], f"{rel} must not print"
         after_log = src.lower().split("logger.info(")
         assert "logger.info(" not in src or "token" not in after_log[1][:200]
     server = _src("app/auth_server/server.py")
