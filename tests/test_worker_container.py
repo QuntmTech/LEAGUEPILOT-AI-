@@ -15,6 +15,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _service_block(compose: str, name: str) -> str:
+    """Return one service's YAML block.
+
+    Bounded by the next top-level key at the same indentation, not by a fixed literal
+    like "\nvolumes:" — a service inserted in between would otherwise be swept into this
+    block and silently invalidate the assertion.
+    """
+    body = compose.split(f"{name}:", 1)[1]
+    match = re.search(r"\n  [A-Za-z0-9_.-]+:\n|\n[a-z]+:\n", body)
+    return body[: match.start()] if match else body
+
+
 @pytest.fixture(scope="module")
 def worker_dockerfile() -> str:
     return (ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
@@ -54,24 +66,24 @@ def test_worker_runs_as_a_non_root_user(worker_dockerfile: str) -> None:
 
 
 def test_compose_worker_has_no_published_ports(compose: str) -> None:
-    block = compose.split("leaguepilot-worker:", 1)[1].split("\nvolumes:", 1)[0]
+    block = _service_block(compose, "leaguepilot-worker")
     assert "ports:" not in block, "the worker must not publish a port"
 
 
 def test_compose_worker_restarts_unless_stopped(compose: str) -> None:
-    block = compose.split("leaguepilot-worker:", 1)[1].split("\nvolumes:", 1)[0]
+    block = _service_block(compose, "leaguepilot-worker")
     assert "restart: unless-stopped" in block
 
 
 def test_compose_worker_never_inlines_the_worker_key(compose: str) -> None:
     """The key must come from the secret store, never from a committed file."""
-    block = compose.split("leaguepilot-worker:", 1)[1].split("\nvolumes:", 1)[0]
+    block = _service_block(compose, "leaguepilot-worker")
     assignment = re.search(r"FCC_CLOUDPOD_WORKER_KEY\s*:\s*(\S+)", block)
     assert assignment is None, "worker key must not be assigned a value in compose"
 
 
 def test_compose_worker_sets_required_configuration(compose: str) -> None:
-    block = compose.split("leaguepilot-worker:", 1)[1].split("\nvolumes:", 1)[0]
+    block = _service_block(compose, "leaguepilot-worker")
     assert "https://leaguepilot-ai.cloudpod.pro" in block
     assert "FCC_CLOUDPOD_WORKER_ID" in block
     assert 'FCC_WORKER_POLL_SECONDS: "3"' in block

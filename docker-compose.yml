@@ -54,5 +54,30 @@ services:
       FCC_AI_PROVIDER: rules
     restart: unless-stopped
 
+  # OAuth 2.1 authorization server for MCP browser clients (Claude.ai, ChatGPT).
+  # Issues audience-bound tokens for the MCP resource; the MCP keeps accepting existing
+  # PocketBase bearers, so this is additive and independently reversible.
+  leaguepilot-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    ports:
+      - "127.0.0.1:8790:8790"
+    env_file:
+      - .env
+    environment:
+      LEAGUEPILOT_AUTH_ISSUER_URL: https://auth.leaguepilot.quntm.xyz/
+      LEAGUEPILOT_AUTH_RESOURCE_URL: https://mcp.leaguepilot.quntm.xyz/
+      LEAGUEPILOT_AUTH_CLOUDPOD_URL: https://leaguepilot-ai.cloudpod.pro
+      LEAGUEPILOT_AUTH_HOST: 0.0.0.0
+      LEAGUEPILOT_AUTH_PORT: 8790
+      LEAGUEPILOT_AUTH_DATABASE_URL: sqlite:////data/leaguepilot-auth.db
+      # LEAGUEPILOT_AUTH_ENCRYPTION_KEY comes from the secret store via env_file.
+      # It must be stable across restarts: changing it invalidates every stored grant.
+    volumes:
+      - leaguepilot-auth-data:/data
+    restart: unless-stopped
+
 volumes:
   command-center-data:
+  leaguepilot-auth-data:
